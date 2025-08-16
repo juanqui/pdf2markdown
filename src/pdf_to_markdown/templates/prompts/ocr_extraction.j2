@@ -1,0 +1,53 @@
+**CRITICAL**: Output ONLY the markdown content from the document. Do not add any explanations, comments, or text that is not present in the original PDF.
+
+Convert the document image to Markdown following these rules:
+
+## Tables
+Use Markdown pipe syntax:
+```
+| Parameter | Min | Typ | Max | Unit |
+|-----------|----:|----:|----:|------|
+| Voltage   | 1.7 | 3.3 | 3.6 | V    |
+```
+
+## Headers
+Use # for main sections, ## for subsections, ### for sub-subsections
+
+## Formatting
+- **Bold** for emphasis
+- *Italic* for secondary emphasis  
+- `Code` for values, registers, pin names
+- $LaTeX$ for equations and subscripts (e.g., V_{DD})
+
+## Lists
+- Use `-` for bullets
+- Use `1.` for numbered lists
+- Indent nested items with 2 spaces
+
+## Technical Elements
+- Preserve ALL numbers, units, and conditions exactly
+- Include every table, equation, and specification
+- For diagrams/graphs: **[Type: Brief description]**
+
+## Special Items
+- Notes/Warnings: Use blockquotes `> **Note:** ...`
+- Omit watermarks and page numbers unless part of content
+- Keep all footnotes and references
+
+## Remember
+- Output ONLY what's in the document
+- NO explanatory text or comments
+- NO "Here is the content" or similar phrases
+- Start directly with the document content
+
+{% if page_number %}
+## Page Context
+This is page {{ page_number }}{% if total_pages %} of {{ total_pages }}{% endif %}.
+{% endif %}
+
+{% if additional_instructions %}
+## Additional Instructions
+{{ additional_instructions }}
+{% endif %}
+
+Begin extraction now:

@@ -1,0 +1,288 @@
+# PDF-to-Markdown Project Development Guide
+
+## Project Overview
+`pdf-to-markdown` is a Python application that leverages Large Language Models (LLMs) to accurately convert technical PDF documents (such as semiconductor datasheets) into well-structured Markdown documents.
+
+## Architecture Summary
+
+### Core Components
+1. **Document Parser** (`SimpleDocumentParser`)
+   - Uses PyMuPDF to render PDF pages as PNG images
+   - Configurable resolution (default 300 DPI)
+   - Caches rendered images in temporary directory
+   - Sequential processing (one document at a time)
+
+2. **Page Parser** (`SimpleLLMPageParser`)
+   - Uses pluggable LLM providers to convert images to Markdown
+   - Accepts any `LLMProvider` implementation
+   - Uses Jinja2 templates for prompts
+   - Handles tables, equations, images, watermarks, and formatting
+
+3. **LLM Provider System** (`LLMProvider`)
+   - Abstract interface for LLM communication
+   - `OpenAILLMProvider`: Supports any OpenAI-compatible API endpoint
+   - Supports GPT-4o-mini and other vision models
+   - Extensible for future providers (Transformers, Ollama, Anthropic, etc.)
+
+4. **Pipeline System**
+   - Queue-based architecture with multiple worker types
+   - 1 document worker (sequential requirement)
+   - N page workers (parallel processing, default 10)
+   - Progress tracking with tqdm
+   - Automatic retry with exponential backoff
+
+## Technology Stack
+- **Python 3.10+**: Core language
+- **Hatch**: Project and dependency management
+- **PyMuPDF**: PDF rendering to images
+- **OpenAI Python SDK**: LLM integration
+- **Pydantic**: Configuration validation
+- **asyncio**: Asynchronous processing
+- **tqdm**: Progress bars
+- **Click**: CLI framework
+- **Rich**: Enhanced terminal output
+
+## Project Structure
+```
+pdf-to-markdown/
+├── src/pdf_to_markdown/
+│   ├── core/              # Data models and interfaces
+│   ├── parsers/            # Document and page parsers
+│   ├── llm_providers/      # LLM provider implementations
+│   ├── pipeline/           # Queue-based processing
+│   ├── config/             # Configuration management
+│   ├── templates/prompts/  # LLM prompt templates
+│   └── utils/              # Utilities
+├── config/                 # Configuration files
+├── tests/                  # Test suites
+└── pyproject.toml          # Project configuration
+```
+
+## Key Design Decisions
+
+### 1. Modular Parser Architecture
+- Abstract base classes for `DocumentParser` and `PageParser`
+- Easy to extend with new implementations
+- Current implementations: `SimpleDocumentParser`, `SimpleLLMPageParser`
+- Abstract `LLMProvider` interface for pluggable LLM backends
+
+### 2. Queue-Based Pipeline
+- Separate queues for documents, pages, and output
+- Priority queue support for processing order
+- Configurable worker counts and batch sizes
+- Error queue for failed tasks
+
+### 3. Configuration Management
+- Pydantic models for type-safe configuration
+- YAML configuration files
+- Environment variable overrides
+- Hierarchical configuration structure
+
+### 4. LLM Integration
+- Pluggable LLM provider system
+- Base64 image encoding for API calls
+- Retry logic with exponential backoff
+- Configurable prompts via Jinja2 templates
+- Support for multiple provider types:
+  - OpenAI-compatible endpoints
+  - Future: Local models (Transformers/HuggingFace)
+  - Future: Ollama, Anthropic, etc.
+
+## Development Commands
+
+### Environment Setup
+```bash
+# Install Hatch
+pipx install hatch
+
+# Install dependencies
+hatch env create
+
+# Activate environment
+hatch shell
+```
+
+### Running the Application
+```bash
+# Basic usage
+pdf-to-markdown input.pdf -o output.md
+
+# With custom configuration
+pdf-to-markdown input.pdf --config config.yaml
+
+# With specific model
+pdf-to-markdown input.pdf --model gpt-4o --resolution 400
+
+# Save configuration
+pdf-to-markdown input.pdf --save-config my-config.yaml
+```
+
+### Testing
+```bash
+# Run all tests
+hatch run test
+
+# Run with coverage
+hatch run test-cov
+
+# Run specific test
+hatch run pytest tests/test_parsers.py
+```
+
+### Code Quality
+```bash
+# Format code
+hatch run format
+
+# Lint code
+hatch run lint
+
+# Type checking
+hatch run typecheck
+```
+
+## Configuration
+
+### Environment Variables
+- `OPENAI_API_KEY`: Required for LLM API access
+- `OPENAI_API_ENDPOINT`: Optional custom endpoint
+- `OPENAI_MODEL`: Model to use (default: gpt-4o-mini)
+- `PDF_TO_MARKDOWN_CACHE_DIR`: Cache directory for images
+- `PDF_TO_MARKDOWN_OUTPUT_DIR`: Default output directory
+- `PDF_TO_MARKDOWN_LOG_LEVEL`: Logging level
+
+### Configuration File (YAML)
+```yaml
+document_parser:
+  resolution: 300
+  cache_dir: /tmp/pdf_to_markdown/cache
+  
+page_parser:
+  llm_provider:
+    provider_type: openai
+    endpoint: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+    temperature: 0.1
+    max_tokens: 4096
+  prompt_template: templates/prompts/ocr_extraction.j2
+  
+pipeline:
+  page_workers: 10
+  enable_progress: true
+```
+
+## LLM Prompt Template
+The prompt template (`ocr_extraction.j2`) instructs the LLM to:
+- Extract tables as HTML
+- Format equations in LaTeX
+- Preserve document structure (headings, lists, emphasis)
+- Handle special elements (watermarks, page numbers, checkboxes)
+- Describe images when captions are absent
+
+## Performance Considerations
+
+### Optimization Strategies
+1. **Image Caching**: Rendered pages cached to avoid re-rendering
+2. **Parallel Page Processing**: Multiple workers process pages concurrently
+3. **Batch Processing**: Pages processed in configurable batches
+4. **Connection Pooling**: Reuse HTTP connections to LLM API
+5. **Automatic Cleanup**: Old cache files removed after 24 hours
+
+### Resource Management
+- Memory-aware queue sizes
+- Configurable timeouts for API calls
+- Maximum page size limits
+- Graceful error handling and recovery
+
+## Error Handling
+- Custom exception hierarchy
+- Retry logic for transient failures
+- Error queue for failed tasks
+- Detailed logging at multiple levels
+- Progress preservation on failure
+
+## Future Enhancements
+1. **Additional LLM Provider Implementations**
+   - Local LLM support using Transformers/HuggingFace
+   - Ollama integration for local models
+   - Anthropic Claude API support
+   - Google Gemini API support
+   - Custom inference endpoints
+
+2. **Additional Parser Implementations**
+   - OCR-based parsers (Tesseract, EasyOCR)
+   - Hybrid approaches (OCR + LLM)
+
+3. **Advanced Features**
+   - Document structure analysis
+   - Table of contents generation
+   - Cross-reference resolution
+   - Multi-document processing
+
+4. **Output Formats**
+   - HTML export
+   - LaTeX export
+   - JSON structured data
+
+## Debugging Tips
+1. Enable debug logging: `--log-level DEBUG`
+2. Disable progress bars: `--no-progress`
+3. Check cache directory for rendered images
+4. Monitor queue statistics in logs
+5. Use smaller PDFs for testing
+
+## Common Issues and Solutions
+
+### API Key Issues
+- Ensure `OPENAI_API_KEY` is set in environment
+- Check API key permissions and quotas
+- Verify endpoint URL if using custom provider
+
+### Memory Issues
+- Reduce page worker count
+- Lower rendering resolution
+- Increase queue size limits
+- Process smaller documents
+
+### Performance Issues
+- Increase page worker count
+- Use faster LLM model (gpt-4o-mini)
+- Enable caching
+- Reduce rendering resolution
+
+## Testing Strategy
+1. **Unit Tests**: Individual component testing
+2. **Integration Tests**: Parser and pipeline integration
+3. **End-to-End Tests**: Full document conversion
+4. **Performance Tests**: Throughput and latency
+5. **Error Scenario Tests**: Failure recovery
+
+## Dependencies to Note
+- **PyMuPDF**: Requires system libraries for PDF rendering
+- **OpenAI SDK**: Handles API communication and retries
+- **Pydantic**: Provides runtime type checking
+- **asyncio**: Core to the concurrent processing model
+
+## Code Style and Conventions
+- Type hints for all functions
+- Docstrings in Google style
+- Black formatting (100 char line length)
+- Comprehensive error handling
+- Logging at appropriate levels
+
+## Deployment Considerations
+1. Docker containerization recommended
+2. Environment-based configuration
+3. Health check endpoints for monitoring
+4. Metrics collection for observability
+5. Secure API key management
+
+## Maintenance Tasks
+- Regular dependency updates
+- Cache cleanup automation
+- Log rotation configuration
+- Performance monitoring
+- API usage tracking
+- We should always update the HLD and LLD when making design changes in our application. These documents are located in the `docs/` directory.
+- We should always update the README.md when adding/changing/removing features from our application. Also when we change how the application is used (i.e. new command lines, changed command lines, updated configuration, etc.)

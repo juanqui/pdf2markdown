@@ -1,0 +1,285 @@
+# PDF to Markdown Converter - Configuration File
+# =================================================
+# This is a sample configuration file for the pdf-to-markdown application.
+# 
+# To use this configuration:
+# 1. Copy this file to 'default.yaml' in the same directory
+# 2. Update the values according to your setup
+# 3. Ensure sensitive values (like API keys) are set via environment variables
+#
+# Configuration values are loaded in the following priority order:
+# 1. Default values in code
+# 2. This configuration file
+# 3. Environment variables (override config file)
+# 4. Command-line arguments (highest priority)
+#
+# Environment variables can be referenced using ${VARIABLE_NAME} syntax
+
+# ==============================================================================
+# LLM PROVIDER CONFIGURATION
+# ==============================================================================
+# The LLM provider section configures how the application connects to and uses
+# Large Language Models for converting PDF pages to Markdown.
+# This configuration is shared across all components that need LLM access.
+
+llm_provider:
+  # Provider type - determines which LLM integration to use
+  # Currently supported: "openai" (for any OpenAI-compatible API)
+  # Future support planned for: "transformers", "ollama", "anthropic", "google"
+  provider_type: openai
+  
+  # API endpoint URL
+  # For OpenAI: https://api.openai.com/v1
+  # For Azure OpenAI: https://your-resource.openai.azure.com/
+  # For local servers: http://localhost:8080/v1
+  # Can use environment variable: ${OPENAI_API_ENDPOINT}
+  endpoint: https://api.openai.com/v1
+  
+  # API authentication key
+  # IMPORTANT: Use environment variables for production!
+  # Example: ${OPENAI_API_KEY}
+  # For local servers without auth, you can use: "not-required"
+  api_key: ${OPENAI_API_KEY}
+  
+  # Model identifier
+  # OpenAI models: gpt-4o, gpt-4o-mini, gpt-4-vision-preview
+  # Local models: depends on your server (e.g., llava:13b, cogvlm-chat, etc.)
+  # Can use environment variable: ${OPENAI_MODEL}
+  model: gpt-4o-mini
+  
+  # Maximum tokens in the response
+  # Higher values allow longer responses but cost more
+  # Typical ranges: 2048-8192 for most models, up to 128000 for some
+  max_tokens: 4096
+  
+  # Temperature for generation (0.0 to 2.0)
+  # Lower = more deterministic/consistent
+  # Higher = more creative/varied
+  # Recommended: 0.1-0.3 for technical documents
+  temperature: 0.3
+  
+  # Request timeout in seconds
+  # Increase for slower servers or large documents
+  # Local models might need 300-900 seconds
+  timeout: 60
+  
+  # ==== REPETITION PENALTY PARAMETERS ====
+  # These parameters help reduce repetitive text in generated markdown
+  # Not all providers support all parameters - unused ones are ignored
+  
+  # Presence penalty (-2.0 to 2.0) - OpenAI style
+  # Positive values penalize tokens that have appeared
+  # Recommended: 0.0-0.5 for technical documents
+  presence_penalty: 0.1
+  
+  # Frequency penalty (-2.0 to 2.0) - OpenAI style  
+  # Positive values penalize tokens based on their frequency
+  # Recommended: 0.0-0.5 for technical documents
+  frequency_penalty: 0.1
+  
+  # Repetition penalty (0.0 to 2.0) - Alternative parameter
+  # Used by some local models instead of presence/frequency
+  # Values > 1.0 reduce repetition
+  # Recommended: 1.05-1.15 for technical documents
+  repetition_penalty: 1.05
+
+# ==============================================================================
+# DOCUMENT PARSER CONFIGURATION
+# ==============================================================================
+# Controls how PDF documents are processed and converted to images
+
+document_parser:
+  # Parser implementation type
+  # Currently only "simple" is available (uses PyMuPDF)
+  type: simple
+  
+  # Resolution for rendering PDF pages to images (DPI)
+  # Higher = better quality but larger files and slower processing
+  # Recommended: 200-300 for text, 300-400 for detailed diagrams
+  resolution: 300
+  
+  # Directory for caching rendered page images
+  # Images are automatically cleaned up after processing
+  # Use absolute paths or paths relative to working directory
+  cache_dir: /tmp/pdf_to_markdown/cache
+  
+  # Maximum size for a single page image in bytes
+  # Pages exceeding this will generate warnings
+  # 50MB default should handle most documents
+  max_page_size: 50000000  # 50MB
+  
+  # Timeout for rendering operations in seconds
+  # Increase if you have very complex PDFs
+  timeout: 30
+
+# ==============================================================================
+# PAGE PARSER CONFIGURATION
+# ==============================================================================
+# Controls how individual pages are converted from images to Markdown
+
+page_parser:
+  # Parser implementation type
+  # Currently only "simple_llm" is available
+  type: simple_llm
+  
+  # Path to custom prompt template (Jinja2 format)
+  # Leave as null to use the default template
+  # Path can be absolute or relative to working directory
+  # prompt_template: /path/to/custom/template.j2
+  
+  # Additional instructions to append to the LLM prompt
+  # Useful for document-specific requirements
+  # Example: "Pay special attention to chemical formulas"
+  # additional_instructions: null
+  
+  # ==== MARKDOWN VALIDATION SETTINGS ====
+  # Controls validation and correction of generated Markdown
+  
+  # Enable/disable markdown validation entirely
+  validate_markdown: true
+  
+  markdown_validator:
+    # Enable/disable the validator (when validate_markdown is true)
+    enabled: true
+    
+    # Attempt to correct validation issues by re-prompting the LLM
+    # This sends the image again with specific instructions about issues
+    attempt_correction: true
+    
+    # Strict mode applies more rigorous validation rules
+    # Recommended: false for LLM-generated content
+    strict_mode: false
+    
+    # Maximum line length for MD013 rule
+    # Technical content often needs longer lines
+    max_line_length: 1000
+    
+    # Additional rules to disable beyond the defaults
+    # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
+    disabled_rules: []
+    
+    # Specific rules to enable that are disabled by default
+    # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
+    enabled_rules: []
+    
+    # Default disabled rules (for reference):
+    # - MD013: Line length (technical content often has long lines)
+    # - MD047: Files must end with single newline
+    # - MD041: First line should be a top-level heading
+    # - MD012: Multiple consecutive blank lines
+    # - MD022: Headings should be surrounded by blank lines
+    # - MD031: Fenced code blocks should be surrounded by blank lines
+    # - MD032: Lists should be surrounded by blank lines
+    # - MD025: Multiple top-level headings
+    # - MD024: Multiple headings with the same content
+    # - MD040: Fenced code blocks should have a language specified
+
+# ==============================================================================
+# PIPELINE CONFIGURATION
+# ==============================================================================
+# Controls the processing pipeline and worker management
+
+pipeline:
+  # Number of document processing workers
+  # MUST BE 1 - PyMuPDF requires sequential document access
+  document_workers: 1
+  
+  # Number of parallel page processing workers
+  # Each worker processes one page at a time
+  # More workers = faster processing (limited by API rate limits)
+  # Recommended: 5-10 for cloud APIs, 1-3 for local models
+  page_workers: 10
+  
+  # Queue size configuration
+  queues:
+    # Maximum documents in the document queue
+    document_queue_size: 100
+    
+    # Maximum pages in the page queue
+    # Should be large enough to hold all pages from your largest PDF
+    page_queue_size: 1000
+    
+    # Maximum processed pages in the output queue
+    output_queue_size: 500
+  
+  # Show progress bars during processing
+  # Disable for automated/headless environments
+  enable_progress: true
+  
+  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # DEBUG shows detailed processing information
+  # INFO shows normal progress
+  # WARNING and above only show problems
+  log_level: INFO
+
+# ==============================================================================
+# OUTPUT CONFIGURATION
+# ==============================================================================
+
+# Default directory for output files
+# Can be overridden with -o/--output command line option
+output_dir: ./output
+
+# Temporary directory for processing files
+# Used for caching and intermediate files
+temp_dir: /tmp/pdf_to_markdown
+
+# ==============================================================================
+# EXAMPLE CONFIGURATIONS
+# ==============================================================================
+
+# ---- Example: OpenAI GPT-4 Vision ----
+# llm_provider:
+#   provider_type: openai
+#   endpoint: https://api.openai.com/v1
+#   api_key: ${OPENAI_API_KEY}
+#   model: gpt-4o
+#   max_tokens: 8192
+#   temperature: 0.1
+#   presence_penalty: 0.3
+#   frequency_penalty: 0.3
+
+# ---- Example: Azure OpenAI ----
+# llm_provider:
+#   provider_type: openai
+#   endpoint: https://your-resource.openai.azure.com/
+#   api_key: ${AZURE_OPENAI_KEY}
+#   model: gpt-4-vision
+#   max_tokens: 4096
+#   temperature: 0.2
+
+# ---- Example: Local Ollama Server ----
+# llm_provider:
+#   provider_type: openai
+#   endpoint: http://localhost:11434/v1
+#   api_key: not-required
+#   model: llava:13b
+#   max_tokens: 8192
+#   temperature: 0.7
+#   timeout: 600
+#   repetition_penalty: 1.1
+
+# ---- Example: Local vLLM Server ----
+# llm_provider:
+#   provider_type: openai
+#   endpoint: http://localhost:8000/v1
+#   api_key: token-abc123
+#   model: cogvlm-chat
+#   max_tokens: 8192
+#   temperature: 0.5
+#   timeout: 300
+#   repetition_penalty: 1.15
+
+# ---- Example: High-Performance Configuration ----
+# document_parser:
+#   resolution: 400  # Higher quality
+# pipeline:
+#   page_workers: 20  # More parallel processing
+
+# ---- Example: Low-Resource Configuration ----
+# document_parser:
+#   resolution: 200  # Lower quality but faster
+# pipeline:
+#   page_workers: 3  # Fewer workers
+# llm_provider:
+#   max_tokens: 2048  # Smaller responses
