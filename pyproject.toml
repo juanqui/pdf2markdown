@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pdf-to-markdown"
+name = "pdf2markdown"
 dynamic = ["version"]
 description = "Python library and CLI tool that leverages LLMs to convert technical PDF documents to well-structured Markdown"
 readme = "README.md"
@@ -27,10 +27,10 @@ keywords = [
   "machine-learning"
 ]
 authors = [
-  { name = "Your Name", email = "your.email@example.com" },
+  { name = "Juan Villa", email = "juanqui@villafam.com" },
 ]
 maintainers = [
-  { name = "Your Name", email = "your.email@example.com" },
+  { name = "Juan Villa", email = "juanqui@villafam.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -81,15 +81,15 @@ transformers = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/yourusername/pdf-to-markdown#readme"
-Issues = "https://github.com/yourusername/pdf-to-markdown/issues"
-Source = "https://github.com/yourusername/pdf-to-markdown"
+Documentation = "https://github.com/juanqui/pdf2markdown#readme"
+Issues = "https://github.com/juanqui/pdf2markdown/issues"
+Source = "https://github.com/juanqui/pdf2markdown"
 
 [project.scripts]
-pdf-to-markdown = "pdf_to_markdown.__main__:main"
+pdf2markdown = "pdf2markdown.__main__:main"
 
 [tool.hatch.version]
-path = "src/pdf_to_markdown/__init__.py"
+path = "src/pdf2markdown/__init__.py"
 
 [tool.hatch.envs.default]
 dependencies = [
@@ -100,6 +100,7 @@ dependencies = [
   "black>=23.0.0",
   "mypy>=1.5.0",
   "ruff>=0.1.0",
+  "bump-my-version>=0.18.0",
 ]
 
 [tool.hatch.envs.default.scripts]
@@ -120,9 +121,11 @@ format = [
 lint = [
   "black --check .",
   "ruff check .",
-  "mypy src/pdf_to_markdown",
 ]
-typecheck = "mypy src/pdf_to_markdown"
+typecheck = "mypy src/pdf2markdown"
+bump-patch = "bump-my-version bump patch"
+bump-minor = "bump-my-version bump minor" 
+bump-major = "bump-my-version bump major"
 
 [[tool.hatch.envs.all.matrix]]
 python = ["3.10", "3.11", "3.12"]
@@ -136,19 +139,19 @@ dependencies = [
 ]
 
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/pdf_to_markdown tests}"
+check = "mypy --install-types --non-interactive {args:src/pdf2markdown tests}"
 
 [tool.coverage.run]
-source_pkgs = ["pdf_to_markdown", "tests"]
+source_pkgs = ["pdf2markdown", "tests"]
 branch = true
 parallel = true
 omit = [
-  "src/pdf_to_markdown/__about__.py",
+  "src/pdf2markdown/__about__.py",
 ]
 
 [tool.coverage.paths]
-pdf_to_markdown = ["src/pdf_to_markdown", "*/pdf-to-markdown/src/pdf_to_markdown"]
-tests = ["tests", "*/pdf-to-markdown/tests"]
+pdf2markdown = ["src/pdf2markdown", "*/pdf2markdown/src/pdf2markdown"]
+tests = ["tests", "*/pdf2markdown/tests"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -190,3 +193,18 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
+
+[tool.bumpversion]
+current_version = "0.1.0"
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+search = "{current_version}"
+replace = "{new_version}"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+tag_message = "Release version {new_version}"
+commit_message = "Bump version: {current_version} → {new_version}"
+
+[[tool.bumpversion.files]]
+filename = "src/pdf2markdown/__init__.py"

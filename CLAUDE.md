@@ -1,7 +1,7 @@
-# PDF-to-Markdown Project Development Guide
+# pdf2markdown Project Development Guide
 
 ## Project Overview
-`pdf-to-markdown` is a Python application that leverages Large Language Models (LLMs) to accurately convert technical PDF documents (such as semiconductor datasheets) into well-structured Markdown documents.
+`pdf2markdown` is a Python application that leverages Large Language Models (LLMs) to accurately convert technical PDF documents (such as semiconductor datasheets) into well-structured Markdown documents.
 
 ## Architecture Summary
 
@@ -43,8 +43,8 @@
 
 ## Project Structure
 ```
-pdf-to-markdown/
-├── src/pdf_to_markdown/
+pdf2markdown/
+├── src/pdf2markdown/
 │   ├── core/              # Data models and interfaces
 │   ├── parsers/            # Document and page parsers
 │   ├── llm_providers/      # LLM provider implementations
@@ -113,16 +113,16 @@ hatch shell
 ### Running the Application
 ```bash
 # Basic usage
-pdf-to-markdown input.pdf -o output.md
+pdf2markdown input.pdf -o output.md
 
 # With custom configuration
-pdf-to-markdown input.pdf --config config.yaml
+pdf2markdown input.pdf --config config.yaml
 
 # With specific model
-pdf-to-markdown input.pdf --model gpt-4o --resolution 400
+pdf2markdown input.pdf --model gpt-4o --resolution 400
 
 # Save configuration
-pdf-to-markdown input.pdf --save-config my-config.yaml
+pdf2markdown input.pdf --save-config my-config.yaml
 ```
 
 ### Testing
@@ -155,15 +155,15 @@ hatch run typecheck
 - `OPENAI_API_KEY`: Required for LLM API access
 - `OPENAI_API_ENDPOINT`: Optional custom endpoint
 - `OPENAI_MODEL`: Model to use (default: gpt-4o-mini)
-- `PDF_TO_MARKDOWN_CACHE_DIR`: Cache directory for images
-- `PDF_TO_MARKDOWN_OUTPUT_DIR`: Default output directory
-- `PDF_TO_MARKDOWN_LOG_LEVEL`: Logging level
+- `PDF2MARKDOWN_CACHE_DIR`: Cache directory for images
+- `PDF2MARKDOWN_OUTPUT_DIR`: Default output directory
+- `PDF2MARKDOWN_LOG_LEVEL`: Logging level
 
 ### Configuration File (YAML)
 ```yaml
 document_parser:
   resolution: 300
-  cache_dir: /tmp/pdf_to_markdown/cache
+  cache_dir: /tmp/pdf2markdown/cache
   
 page_parser:
   llm_provider:
@@ -328,3 +328,43 @@ All validators inherit from `BaseValidator` and implement:
 - We should always update the HLD and LLD when making design changes in our application. These documents are located in the `docs/` directory.
 - We should always update the README.md when adding/changing/removing features from our application. Also when we change how the application is used (i.e. new command lines, changed command lines, updated configuration, etc.)
 - We need to use hatch when running our application, installing dependencies, etc. This is what the project was configured with/for.
+
+## Version Management
+**IMPORTANT**: Version numbers should NEVER be manually changed. Always use `bump-my-version` for version management:
+
+```bash
+# For bug fixes and small changes
+hatch run bump-patch    # 0.1.0 → 0.1.1
+
+# For new features
+hatch run bump-minor    # 0.1.0 → 0.2.0
+
+# For breaking changes
+hatch run bump-major    # 0.1.0 → 1.0.0
+```
+
+This automatically:
+- Updates the version in `src/pdf2markdown/__init__.py`
+- Creates a git commit with the version change
+- Creates a git tag (e.g., `v0.1.1`)
+- Triggers the GitHub Actions release workflow when pushed
+
+## GitHub Actions Workflows
+The project includes CI/CD workflows:
+
+- **CI Workflow** (`.github/workflows/ci.yml`): Runs on push/PR to main/develop
+  - Tests on Python 3.10, 3.11, 3.12, 3.13
+  - Linting, formatting, and type checking
+  - Test coverage reporting
+  - Package building and validation
+
+- **Release Workflow** (`.github/workflows/release.yml`): Runs on version tags
+  - Builds and validates the package
+  - Creates GitHub releases with auto-generated notes
+  - Publishes to PyPI automatically
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines a comprehensive plan for integrating SkyPilot as an LLMProvider in the pdf-to-markdown project. The integration will enable dynamic provisioning of GPU instances on cloud providers (particularly DataCrunch) to run open-source vision-language models for PDF processing. This approach provides cost-effective scaling, automatic resource management, and support for state-of-the-art models like Qwen2.5-VL.
+This document outlines a comprehensive plan for integrating SkyPilot as an LLMProvider in the pdf2markdown project. The integration will enable dynamic provisioning of GPU instances on cloud providers (particularly DataCrunch) to run open-source vision-language models for PDF processing. This approach provides cost-effective scaling, automatic resource management, and support for state-of-the-art models like Qwen2.5-VL.
 
 ## Requirements Analysis
 
@@ -68,7 +68,7 @@ This document outlines a comprehensive plan for integrating SkyPilot as an LLMPr
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                 PDF-to-Markdown Application            │
+│                 pdf2markdown Application            │
 ├────────────────────────────────────────────────────────┤
 │                    Pipeline System                      │
 │  ┌─────────────────────────────────────────────────┐  │
@@ -208,13 +208,13 @@ class SkyPilotProviderConfig:
 ### Phase 1: Core Infrastructure (Week 1-2)
 
 #### Milestone 1.1: Basic SkyPilotLLMProvider
-- [ ] Create `src/pdf_to_markdown/llm_providers/skypilot.py`
+- [ ] Create `src/pdf2markdown/llm_providers/skypilot.py`
 - [ ] Implement basic LLMProvider interface
 - [ ] Add configuration schema to `config/schemas.py`
 - [ ] Update factory pattern in `llm_providers/factory.py`
 
 #### Milestone 1.2: Cluster Management
-- [ ] Create `src/pdf_to_markdown/llm_providers/skypilot_cluster.py`
+- [ ] Create `src/pdf2markdown/llm_providers/skypilot_cluster.py`
 - [ ] Implement cluster provisioning logic
 - [ ] Add health checking mechanisms
 - [ ] Implement graceful teardown
@@ -568,7 +568,7 @@ class TestSkyPilotIntegration:
 
 ## Conclusion
 
-The SkyPilot LLMProvider implementation represents a significant enhancement to the pdf-to-markdown project, enabling cost-effective access to state-of-the-art vision-language models through dynamic cloud provisioning. The phased implementation approach ensures manageable risk while delivering value incrementally.
+The SkyPilot LLMProvider implementation represents a significant enhancement to the pdf2markdown project, enabling cost-effective access to state-of-the-art vision-language models through dynamic cloud provisioning. The phased implementation approach ensures manageable risk while delivering value incrementally.
 
 Key success factors include:
 - Robust error handling and recovery mechanisms
@@ -584,4 +584,4 @@ The implementation will provide users with:
 - Seamless integration with existing workflows
 - Flexibility to choose models and providers
 
-With proper execution of this plan, the SkyPilot integration will position pdf-to-markdown as a leading solution for cost-effective, scalable document processing using cutting-edge AI models.
+With proper execution of this plan, the SkyPilot integration will position pdf2markdown as a leading solution for cost-effective, scalable document processing using cutting-edge AI models.

@@ -1,4 +1,4 @@
-# Low-level Design Document - PDF-to-Markdown Converter
+# Low-level Design Document - pdf2markdown Converter
 
 ## Table of Contents
 1. [Executive Summary](#executive-summary)
@@ -15,7 +15,7 @@
 
 ## Executive Summary
 
-The PDF-to-Markdown converter is a modular, pipeline-based Python library and application designed to convert technical PDF documents into well-structured Markdown format using Large Language Models (LLMs). The system provides both a high-level Python API for programmatic integration and a command-line interface for standalone usage. It employs a two-phase processing approach: document parsing (PDF to images) and page parsing (images to Markdown), with support for parallel processing through a queue-based architecture.
+The pdf2markdown converter is a modular, pipeline-based Python library and application designed to convert technical PDF documents into well-structured Markdown format using Large Language Models (LLMs). The system provides both a high-level Python API for programmatic integration and a command-line interface for standalone usage. It employs a two-phase processing approach: document parsing (PDF to images) and page parsing (images to Markdown), with support for parallel processing through a queue-based architecture.
 
 ## Architecture Overview
 
@@ -49,9 +49,9 @@ graph TB
 ## Project Structure
 
 ```
-pdf-to-markdown/
+pdf2markdown/
 ├── src/
-│   └── pdf_to_markdown/
+│   └── pdf2markdown/
 │       ├── __init__.py              # Public API exports
 │       ├── __main__.py              # Entry point for CLI
 │       ├── api/                     # Library API module
@@ -118,7 +118,7 @@ pdf-to-markdown/
 
 ### 4.1 Library API Layer
 
-The Library API provides a high-level interface for programmatic use of the pdf-to-markdown converter:
+The Library API provides a high-level interface for programmatic use of the pdf2markdown converter:
 
 ```python
 # api/converter.py
@@ -604,7 +604,7 @@ sequenceDiagram
     participant PageParser
     participant Storage
     
-    User->>CLI: pdf-to-markdown input.pdf
+    User->>CLI: pdf2markdown input.pdf
     CLI->>Pipeline: process(input.pdf)
     Pipeline->>DocParser: parse(input.pdf)
     
@@ -849,7 +849,7 @@ class DocumentParserConfig(BaseModel):
     """Configuration for document parser"""
     type: str = "simple"
     resolution: int = Field(default=300, ge=72, le=600)
-    cache_dir: Path = Field(default=Path("/tmp/pdf_to_markdown/cache"))
+    cache_dir: Path = Field(default=Path("/tmp/pdf2markdown/cache"))
     max_page_size: int = Field(default=50_000_000)  # 50MB
     timeout: int = Field(default=30)
 
@@ -903,7 +903,7 @@ class AppConfig(BaseModel):
     page_parser: PageParserConfig
     pipeline: PipelineConfig
     output_dir: Path = Field(default=Path("./output"))
-    temp_dir: Path = Field(default=Path("/tmp/pdf_to_markdown"))
+    temp_dir: Path = Field(default=Path("/tmp/pdf2markdown"))
 ```
 
 ### 8.2 Simplified Prompt Template
@@ -1009,6 +1009,10 @@ class MarkdownValidator:
             "MD024",  # Multiple headings with the same content
             "MD013",  # Line length (technical content often has long lines)
             "MD047",  # Files must end with single newline
+            "MD040",  # Fenced code blocks should have a language specified
+            "MD033",  # Inline HTML (common in technical documents and tables)
+            "MD026",  # Trailing punctuation in heading text (common in PDF headings)
+            "MD042",  # No empty links (LLMs may generate placeholder links during extraction)
         ]
         
         for rule_id in default_disabled_rules:
@@ -1229,7 +1233,7 @@ performance:
 
 ## Summary
 
-This technical design provides a comprehensive blueprint for implementing a modular, scalable PDF-to-Markdown converter. The architecture supports:
+This technical design provides a comprehensive blueprint for implementing a modular, scalable pdf2markdown converter. The architecture supports:
 
 1. **Modularity**: Easily extensible with new parser implementations
 2. **Scalability**: Queue-based architecture with configurable worker pools

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from pdf_to_markdown.config import (
+from pdf2markdown.config import (
     AppConfig,
     DocumentParserConfig,
     PageParserConfig,
@@ -60,7 +60,7 @@ class TestPageParserConfig:
         assert config.llm_provider.max_tokens == 4096
 
         # Test with explicit llm_provider
-        from pdf_to_markdown.config.schemas import LLMProviderConfig
+        from pdf2markdown.config.schemas import LLMProviderConfig
 
         provider_config = LLMProviderConfig(api_key="test-key-2")
         config2 = PageParserConfig(llm_provider=provider_config)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from pdf_to_markdown.core import (
+from pdf2markdown.core import (
     Document,
     Page,
     PageMetadata,

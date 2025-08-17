@@ -1,6 +1,6 @@
 # PDF to Markdown Converter - Configuration File
 # =================================================
-# This is a sample configuration file for the pdf-to-markdown application.
+# This is a sample configuration file for the pdf2markdown application.
 # 
 # To use this configuration:
 # 1. Copy this file to 'default.yaml' in the same directory
@@ -101,7 +101,7 @@ document_parser:
   # Directory for caching rendered page images
   # Images are automatically cleaned up after processing
   # Use absolute paths or paths relative to working directory
-  cache_dir: /tmp/pdf_to_markdown/cache
+  cache_dir: /tmp/pdf2markdown/cache
   
   # Maximum size for a single page image in bytes
   # Pages exceeding this will generate warnings
@@ -265,7 +265,7 @@ output_dir: ./output
 
 # Temporary directory for processing files
 # Used for caching and intermediate files
-temp_dir: /tmp/pdf_to_markdown
+temp_dir: /tmp/pdf2markdown
 
 # Page separator format
 # This text is inserted between pages in the final markdown output

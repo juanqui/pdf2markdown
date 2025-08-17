@@ -1,0 +1,97 @@
+**CRITICAL**: Output ONLY the markdown content from the document. Do not add any explanations, comments, or text that is not present in the original PDF.
+
+Convert the document image to Markdown following these rules:
+
+## Tables
+{% if table_format == 'markdown' %}
+Use Markdown pipe syntax for ALL tables:
+```
+| Parameter | Min | Typ | Max | Unit |
+|-----------|----:|----:|----:|------|
+| Voltage   | 1.7 | 3.3 | 3.6 | V    |
+```
+Rules for Markdown tables:
+- Use pipes (|) to separate columns
+- Include a header separator row with dashes (---)
+- Align columns using colons (:) - left (:---), center (:---:), or right (---:)
+- Keep cell content concise and on single lines when possible
+{% else %}
+Use HTML <table> syntax for ALL tables to preserve complex layouts:
+```html
+<table>
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Min</th>
+      <th>Typ</th>
+      <th>Max</th>
+      <th>Unit</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Voltage</td>
+      <td>1.7</td>
+      <td>3.3</td>
+      <td>3.6</td>
+      <td>V</td>
+    </tr>
+  </tbody>
+</table>
+```
+Rules for HTML tables:
+- Always use <table>, <thead>, <tbody>, <tr>, <th>, and <td> tags
+- Use <thead> for header rows with <th> elements
+- Use <tbody> for data rows with <td> elements
+- For cells spanning multiple columns, use colspan="N"
+- For cells spanning multiple rows, use rowspan="N"
+- For merged cells or complex layouts, use appropriate colspan/rowspan
+- Preserve ALL formatting, alignments, and cell relationships
+- Include style attributes if needed for alignment: style="text-align: right;"
+- For nested tables, embed complete <table> structures within <td> elements
+{% endif %}
+
+## Headers
+Use # for main sections, ## for subsections, ### for sub-subsections
+
+## Formatting
+- **Bold** for emphasis
+- *Italic* for secondary emphasis  
+- `Code` for values, registers, pin names
+- $LaTeX$ for equations and subscripts (e.g., V_{DD})
+
+## Lists
+- Use `-` for bullets
+- Use `1.` for numbered lists
+- Indent nested items with 2 spaces
+
+## Technical Elements
+- Preserve ALL numbers, units, and conditions exactly
+- Include every table, equation, and specification
+
+## Images and Diagrams
+- For any image, diagram, schematic, or graph, provide a descriptive summary
+- Format: `[IMAGE: Brief description of what the image shows. Include key components, connections, or data points visible]`
+- Examples:
+  - `[IMAGE: Sample schematic of how to wire the nPM1300. Includes power input, GPIO connections, and I2C interface]`
+  - `[IMAGE: Block diagram showing system architecture with CPU, memory controller, and peripheral interfaces]`
+  - `[IMAGE: Graph showing voltage vs. temperature characteristics from -40°C to 85°C]`
+- Be specific about what is shown but keep descriptions concise
+
+## Special Items
+- Notes/Warnings: Use blockquotes `> **Note:** ...`
+- Omit watermarks and page numbers unless part of content
+- Keep all footnotes and references
+
+## Remember
+- Output ONLY what's in the document
+- NO explanatory text or comments
+- NO "Here is the content" or similar phrases
+- Start directly with the document content
+
+{% if additional_instructions %}
+## Additional Instructions
+{{ additional_instructions }}
+{% endif %}
+
+Begin extraction now:

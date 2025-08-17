@@ -2,11 +2,10 @@
 """Debug configuration to see what's being passed."""
 
 from pathlib import Path
-import yaml
 from pprint import pprint
 
 # Load configuration
-from pdf_to_markdown.config import load_settings
+from pdf2markdown.config import load_settings
 
 settings = load_settings(Path("config/default.yaml"))
 

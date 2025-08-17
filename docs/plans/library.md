@@ -1,8 +1,8 @@
-# PDF-to-Markdown Library Interface Design
+# pdf2markdown Library Interface Design
 
 ## Executive Summary
 
-This document outlines the plan to refactor the pdf-to-markdown project to be consumable as both a Python library and a CLI tool. The primary goal is to enable other applications to integrate pdf-to-markdown's powerful PDF processing capabilities programmatically while maintaining backward compatibility with the existing CLI interface.
+This document outlines the plan to refactor the pdf2markdown project to be consumable as both a Python library and a CLI tool. The primary goal is to enable other applications to integrate pdf2markdown's powerful PDF processing capabilities programmatically while maintaining backward compatibility with the existing CLI interface.
 
 ## Current State Analysis
 
@@ -40,7 +40,7 @@ This document outlines the plan to refactor the pdf-to-markdown project to be co
 ### 1. Core API Module Structure
 
 ```
-src/pdf_to_markdown/
+src/pdf2markdown/
 ├── api/                      # New library API module
 │   ├── __init__.py          # Public API exports
 │   ├── converter.py         # Main converter class
@@ -57,7 +57,7 @@ src/pdf_to_markdown/
 #### 2.1 Simple High-Level API
 
 ```python
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 # Simple usage with defaults
 converter = PDFConverter()
@@ -83,7 +83,7 @@ markdown = converter.convert_sync("document.pdf")
 #### 2.2 Advanced Component-Based API
 
 ```python
-from pdf_to_markdown import (
+from pdf2markdown import (
     DocumentParser,
     PageParser,
     LLMProvider,
@@ -134,7 +134,7 @@ document.save("output.md")
 #### 2.3 Streaming API
 
 ```python
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 converter = PDFConverter(config={...})
 
@@ -212,13 +212,13 @@ class ValidationError(PDFConversionError):
 
 ```python
 # Library uses named loggers
-logger = logging.getLogger("pdf_to_markdown.converter")
+logger = logging.getLogger("pdf2markdown.converter")
 
 # Host application can configure as needed
-logging.getLogger("pdf_to_markdown").setLevel(logging.WARNING)
+logging.getLogger("pdf2markdown").setLevel(logging.WARNING)
 
 # Or suppress entirely
-logging.getLogger("pdf_to_markdown").addHandler(logging.NullHandler())
+logging.getLogger("pdf2markdown").addHandler(logging.NullHandler())
 ```
 
 ## Implementation Plan
@@ -289,10 +289,10 @@ def test_streaming_api():
 
 ### User Guide
 ```markdown
-# Using pdf-to-markdown as a Library
+# Using pdf2markdown as a Library
 
 ## Installation
-pip install pdf-to-markdown
+pip install pdf2markdown
 
 ## Quick Start
 [Basic usage example]
@@ -312,7 +312,7 @@ pip install pdf-to-markdown
 No changes required. The CLI interface remains exactly the same:
 
 ```bash
-pdf-to-markdown input.pdf -o output.md --config config.yaml
+pdf2markdown input.pdf -o output.md --config config.yaml
 ```
 
 ## Performance Considerations
@@ -335,43 +335,43 @@ pdf-to-markdown input.pdf -o output.md --config config.yaml
 
 ### Integration Overview
 
-The PDFKB-MCP project can leverage pdf-to-markdown as a high-quality PDF parser to replace or supplement its existing parser implementations. Here's how to integrate it:
+The PDFKB-MCP project can leverage pdf2markdown as a high-quality PDF parser to replace or supplement its existing parser implementations. Here's how to integrate it:
 
 ### 1. Installation
 
-Add pdf-to-markdown as a dependency in PDFKB-MCP's `pyproject.toml`:
+Add pdf2markdown as a dependency in PDFKB-MCP's `pyproject.toml`:
 
 ```toml
 [project.dependencies]
-pdf-to-markdown = "^1.0.0"
+pdf2markdown = "^1.0.0"
 ```
 
 ### 2. Create Parser Adapter
 
-Create a new parser at `src/pdfkb/parsers/parser_pdf_to_markdown.py`:
+Create a new parser at `src/pdfkb/parsers/parser_pdf2markdown.py`:
 
 ```python
 from typing import Dict, Any, Optional
 from pathlib import Path
 import asyncio
 
-from pdf_to_markdown import PDFConverter, Config
+from pdf2markdown import PDFConverter, Config
 from ..base_parser import BaseParser, ParsedDocument
 
 class PDFToMarkdownParser(BaseParser):
-    """High-quality PDF parser using pdf-to-markdown library."""
+    """High-quality PDF parser using pdf2markdown library."""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__()
         
-        # Build pdf-to-markdown configuration
+        # Build pdf2markdown configuration
         self.config = self._build_config(config or {})
         self.converter = PDFConverter(config=self.config)
     
     def _build_config(self, pdfkb_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert PDFKB config to pdf-to-markdown config."""
+        """Convert PDFKB config to pdf2markdown config."""
         
-        # Map PDFKB config to pdf-to-markdown config
+        # Map PDFKB config to pdf2markdown config
         config = {
             "llm_provider": {
                 "provider_type": "openai",
@@ -383,7 +383,7 @@ class PDFToMarkdownParser(BaseParser):
             },
             "document_parser": {
                 "resolution": pdfkb_config.get("resolution", 300),
-                "cache_dir": pdfkb_config.get("cache_dir", "/tmp/pdf_to_markdown_cache"),
+                "cache_dir": pdfkb_config.get("cache_dir", "/tmp/pdf2markdown_cache"),
             },
             "page_parser": {
                 "validate_content": True,
@@ -418,7 +418,7 @@ class PDFToMarkdownParser(BaseParser):
             
             # Extract metadata during conversion
             metadata = {
-                "parser": "pdf-to-markdown",
+                "parser": "pdf2markdown",
                 "llm_provider": self.config["llm_provider"]["provider_type"],
                 "model": self.config["llm_provider"].get("model", "N/A"),
                 "resolution": self.config["document_parser"]["resolution"],
@@ -435,7 +435,7 @@ class PDFToMarkdownParser(BaseParser):
             )
             
         except Exception as e:
-            raise RuntimeError(f"Failed to parse PDF with pdf-to-markdown: {e}")
+            raise RuntimeError(f"Failed to parse PDF with pdf2markdown: {e}")
     
     def parse(self, file_path: Path) -> ParsedDocument:
         """Parse PDF file synchronously."""
@@ -451,7 +451,7 @@ class PDFToMarkdownParser(BaseParser):
     
     def _count_pages(self, markdown: str) -> int:
         """Count pages based on page markers."""
-        # pdf-to-markdown uses page separators
+        # pdf2markdown uses page separators
         return markdown.count('--[PAGE:') + 1
     
     @property
@@ -462,7 +462,7 @@ class PDFToMarkdownParser(BaseParser):
     @property
     def name(self) -> str:
         """Return parser name."""
-        return "pdf-to-markdown"
+        return "pdf2markdown"
     
     @property
     def description(self) -> str:
@@ -475,7 +475,7 @@ class PDFToMarkdownParser(BaseParser):
 Update `src/pdfkb/parser_factory.py`:
 
 ```python
-from .parsers.parser_pdf_to_markdown import PDFToMarkdownParser
+from .parsers.parser_pdf2markdown import PDFToMarkdownParser
 
 AVAILABLE_PARSERS = {
     "pymupdf4llm": PyMuPDF4LLMParser,
@@ -483,12 +483,12 @@ AVAILABLE_PARSERS = {
     "mineru": MinerUParser,
     "docling": DoclingParser,
     "llm": LLMParser,
-    "pdf_to_markdown": PDFToMarkdownParser,  # Add new parser
+    "pdf2markdown": PDFToMarkdownParser,  # Add new parser
     "markdown": MarkdownParser,
 }
 
 # Set as default for highest quality
-DEFAULT_PDF_PARSER = "pdf_to_markdown"
+DEFAULT_PDF_PARSER = "pdf2markdown"
 ```
 
 ### 4. Configuration Integration
@@ -498,24 +498,24 @@ Add configuration options to PDFKB-MCP's environment variables:
 ```python
 # In src/pdfkb/config.py
 
-# PDF-to-Markdown Parser Settings
-PDF_TO_MARKDOWN_PROVIDER: str = Field(
+# pdf2markdown Parser Settings
+PDF2MARKDOWN_PROVIDER: str = Field(
     default="openai",
-    description="LLM provider for pdf-to-markdown (openai/transformers)"
+    description="LLM provider for pdf2markdown (openai/transformers)"
 )
-PDF_TO_MARKDOWN_MODEL: str = Field(
+PDF2MARKDOWN_MODEL: str = Field(
     default="gpt-4o-mini",
-    description="Model to use for pdf-to-markdown"
+    description="Model to use for pdf2markdown"
 )
-PDF_TO_MARKDOWN_RESOLUTION: int = Field(
+PDF2MARKDOWN_RESOLUTION: int = Field(
     default=300,
     description="DPI resolution for PDF rendering"
 )
-PDF_TO_MARKDOWN_PAGE_WORKERS: int = Field(
+PDF2MARKDOWN_PAGE_WORKERS: int = Field(
     default=10,
     description="Number of parallel page workers"
 )
-PDF_TO_MARKDOWN_VALIDATE: bool = Field(
+PDF2MARKDOWN_VALIDATE: bool = Field(
     default=True,
     description="Enable content validation and correction"
 )
@@ -527,7 +527,7 @@ The parser will automatically be available through the existing document process
 
 ```python
 # In document processor
-parser = parser_factory.get_parser("pdf_to_markdown", config)
+parser = parser_factory.get_parser("pdf2markdown", config)
 parsed_doc = await parser.parse_async(pdf_path)
 ```
 
@@ -551,10 +551,10 @@ class BatchPDFToMarkdownParser(PDFToMarkdownParser):
 Leverage PDFKB-MCP's intelligent cache:
 
 ```python
-# Configure pdf-to-markdown to use PDFKB's cache directory
+# Configure pdf2markdown to use PDFKB's cache directory
 config = {
     "document_parser": {
-        "cache_dir": str(PDFKB_CACHE_DIR / "pdf_to_markdown"),
+        "cache_dir": str(PDFKB_CACHE_DIR / "pdf2markdown"),
     }
 }
 ```
@@ -565,7 +565,7 @@ config = {
 2. **Flexibility**: Support for both cloud (OpenAI-compatible) and local (Transformers) models
 3. **Performance**: Parallel page processing and intelligent caching
 4. **Reliability**: Built-in validation and correction pipeline
-5. **Maintenance**: Leverages actively maintained pdf-to-markdown library
+5. **Maintenance**: Leverages actively maintained pdf2markdown library
 
 ### Migration Strategy
 
@@ -577,13 +577,13 @@ config = {
 ### Configuration Example for PDFKB-MCP
 
 ```bash
-# .env file for PDFKB-MCP with pdf-to-markdown
-PDFKB_DEFAULT_PDF_PARSER=pdf_to_markdown
-PDFKB_PDF_TO_MARKDOWN_PROVIDER=openai
-PDFKB_PDF_TO_MARKDOWN_MODEL=gpt-4o-mini
-PDFKB_PDF_TO_MARKDOWN_RESOLUTION=300
-PDFKB_PDF_TO_MARKDOWN_PAGE_WORKERS=10
-PDFKB_PDF_TO_MARKDOWN_VALIDATE=true
+# .env file for PDFKB-MCP with pdf2markdown
+PDFKB_DEFAULT_PDF_PARSER=pdf2markdown
+PDFKB_PDF2MARKDOWN_PROVIDER=openai
+PDFKB_PDF2MARKDOWN_MODEL=gpt-4o-mini
+PDFKB_PDF2MARKDOWN_RESOLUTION=300
+PDFKB_PDF2MARKDOWN_PAGE_WORKERS=10
+PDFKB_PDF2MARKDOWN_VALIDATE=true
 OPENROUTER_API_KEY=sk-or-v1-...
 ```
 

@@ -24,7 +24,7 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 ### From PyPI (Coming Soon)
 
 ```bash
-pip install pdf-to-markdown
+pip install pdf2markdown
 ```
 
 ### Using Hatch (Development)
@@ -34,8 +34,8 @@ pip install pdf-to-markdown
 pipx install hatch
 
 # Clone the repository
-git clone https://github.com/yourusername/pdf-to-markdown.git
-cd pdf-to-markdown
+git clone https://github.com/juanqui/pdf2markdown.git
+cd pdf2markdown
 
 # Install dependencies
 hatch env create
@@ -48,8 +48,8 @@ hatch shell
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pdf-to-markdown.git
-cd pdf-to-markdown
+git clone https://github.com/juanqui/pdf2markdown.git
+cd pdf2markdown
 
 # Install the package
 pip install -e .
@@ -77,17 +77,17 @@ export OPENAI_API_KEY="your-api-key-here"
 
 3. **Convert a PDF:**
 ```bash
-pdf-to-markdown input.pdf -o output.md
+pdf2markdown input.pdf -o output.md
 ```
 
 ## Library Usage
 
-`pdf-to-markdown` can be used as a Python library in your own applications. This is useful for integrating PDF conversion into larger systems, web applications, or data processing pipelines.
+`pdf2markdown` can be used as a Python library in your own applications. This is useful for integrating PDF conversion into larger systems, web applications, or data processing pipelines.
 
 ### Simple Usage
 
 ```python
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 # Create converter with default settings
 converter = PDFConverter()
@@ -103,7 +103,7 @@ markdown_text = converter.convert_sync("document.pdf", "output.md")
 ### Configuration Options
 
 ```python
-from pdf_to_markdown import PDFConverter, ConfigBuilder
+from pdf2markdown import PDFConverter, ConfigBuilder
 
 # Build configuration programmatically
 config = ConfigBuilder() \
@@ -120,7 +120,7 @@ markdown = converter.convert_sync("document.pdf")
 ### Table Format Configuration
 
 ```python
-from pdf_to_markdown import ConfigBuilder, PDFConverter
+from pdf2markdown import ConfigBuilder, PDFConverter
 
 # Configure for HTML tables (better for complex layouts)
 config = ConfigBuilder() \
@@ -139,7 +139,7 @@ config['page_parser']['table_format'] = 'markdown'
 ### Using Different LLM Providers
 
 ```python
-from pdf_to_markdown import ConfigBuilder, PDFConverter
+from pdf2markdown import ConfigBuilder, PDFConverter
 
 # OpenAI (or compatible endpoints)
 config = ConfigBuilder() \
@@ -166,7 +166,7 @@ converter = PDFConverter(config=config)
 
 ```python
 import asyncio
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 async def convert_pdf():
     converter = PDFConverter()
@@ -195,7 +195,7 @@ Process large documents page by page as they complete:
 
 ```python
 import asyncio
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 async def stream_conversion():
     converter = PDFConverter()
@@ -214,7 +214,7 @@ Convert multiple PDFs efficiently:
 
 ```python
 import asyncio
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 async def batch_convert():
     converter = PDFConverter()
@@ -237,7 +237,7 @@ asyncio.run(batch_convert())
 ### Loading Configuration from Files
 
 ```python
-from pdf_to_markdown import PDFConverter, Config
+from pdf2markdown import PDFConverter, Config
 
 # From YAML file
 config = Config.from_yaml("config.yaml")
@@ -260,7 +260,7 @@ converter = PDFConverter(config=config_dict)
 ### Error Handling
 
 ```python
-from pdf_to_markdown import (
+from pdf2markdown import (
     PDFConverter,
     PDFConversionError,
     ConfigurationError,
@@ -286,7 +286,7 @@ Properly clean up resources using context managers:
 
 ```python
 import asyncio
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 async def convert_with_cleanup():
     async with PDFConverter() as converter:
@@ -303,7 +303,7 @@ markdown = asyncio.run(convert_with_cleanup())
 
 ```python
 from flask import Flask, request, jsonify
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 app = Flask(__name__)
 converter = PDFConverter()
@@ -327,7 +327,7 @@ def convert_pdf():
 
 ```python
 from celery import Celery
-from pdf_to_markdown import PDFConverter
+from pdf2markdown import PDFConverter
 
 app = Celery('tasks', broker='redis://localhost:6379')
 converter = PDFConverter()
@@ -341,7 +341,7 @@ def convert_pdf_task(pdf_path):
 #### Document Processing Pipeline
 
 ```python
-from pdf_to_markdown import PDFConverter, ConfigBuilder
+from pdf2markdown import PDFConverter, ConfigBuilder
 import sqlite3
 
 # Configure for high-quality conversion
@@ -377,36 +377,36 @@ def process_document(pdf_path, doc_id):
 
 ```bash
 # Convert with default settings
-pdf-to-markdown document.pdf
+pdf2markdown document.pdf
 
 # Specify output file
-pdf-to-markdown document.pdf -o converted.md
+pdf2markdown document.pdf -o converted.md
 
 # Use a specific model
-pdf-to-markdown document.pdf --model gpt-4o
+pdf2markdown document.pdf --model gpt-4o
 
 # Adjust rendering resolution
-pdf-to-markdown document.pdf --resolution 400
+pdf2markdown document.pdf --resolution 400
 ```
 
 ### Advanced Usage
 
 ```bash
 # Use custom configuration file
-pdf-to-markdown document.pdf --config my-config.yaml
+pdf2markdown document.pdf --config my-config.yaml
 
 # Parallel processing with more workers
-pdf-to-markdown document.pdf --page-workers 20
+pdf2markdown document.pdf --page-workers 20
 
 # Disable progress logging for automation
-pdf-to-markdown document.pdf --no-progress
+pdf2markdown document.pdf --no-progress
 
 # Save configuration for reuse
-pdf-to-markdown document.pdf --save-config my-settings.yaml
+pdf2markdown document.pdf --save-config my-settings.yaml
 
 # Specify table format (html or markdown)
-pdf-to-markdown document.pdf --table-format html  # For complex tables
-pdf-to-markdown document.pdf --table-format markdown  # For simple tables
+pdf2markdown document.pdf --table-format html  # For complex tables
+pdf2markdown document.pdf --table-format markdown  # For simple tables
 ```
 
 ### Configuration
@@ -457,7 +457,7 @@ llm_provider:
 document_parser:
   type: simple  # Parser type
   resolution: 300  # DPI for rendering PDF pages to images
-  cache_dir: /tmp/pdf_to_markdown/cache  # Cache directory for rendered images
+  cache_dir: /tmp/pdf2markdown/cache  # Cache directory for rendered images
   max_page_size: 50000000  # Maximum page size in bytes (50MB)
   timeout: 30  # Timeout for rendering operations
 
@@ -488,7 +488,11 @@ page_parser:
       max_line_length: 1000  # Max line length (MD013 rule)
       disabled_rules: []  # Additional rules to disable
       enabled_rules: []  # Specific rules to enable
-      # Note: Common overly-strict rules are disabled by default
+      # Note: Common overly-strict rules are disabled by default including:
+      # MD033 (Inline HTML) - common in technical documents and tables
+      # MD026 (Trailing punctuation in headings) - common in PDF headings
+      # MD042 (No empty links) - LLMs may generate placeholder links during extraction
+      # MD041, MD022, MD031, MD032, MD025, MD024, MD013, MD047, MD040
     
     # Repetition validator - detects and corrects unwanted repetition
     repetition:
@@ -518,7 +522,7 @@ pipeline:
 
 # Output Configuration
 output_dir: ./output  # Default output directory
-temp_dir: /tmp/pdf_to_markdown  # Temporary file directory
+temp_dir: /tmp/pdf2markdown  # Temporary file directory
 page_separator: "\n\n--[PAGE: {page_number}]--\n\n"  # Separator between pages
 ```
 
@@ -533,7 +537,7 @@ Configuration values are loaded in the following order (later values override ea
 
 **Note:** The application looks for `config/default.yaml` in the current working directory by default. You can specify a different configuration file using the `--config` option:
 ```bash
-pdf-to-markdown input.pdf --config /path/to/my-config.yaml
+pdf2markdown input.pdf --config /path/to/my-config.yaml
 ```
 
 #### LLM Provider Configuration
@@ -638,10 +642,10 @@ See `config/transformers_example.yaml` for a complete configuration example.
 - `OPENAI_MODEL`: Model to use (default: gpt-4o-mini)
 
 ### Application Variables
-- `PDF_TO_MARKDOWN_CACHE_DIR`: Cache directory for rendered images
-- `PDF_TO_MARKDOWN_OUTPUT_DIR`: Default output directory
-- `PDF_TO_MARKDOWN_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
-- `PDF_TO_MARKDOWN_TEMP_DIR`: Temporary file directory
+- `PDF2MARKDOWN_CACHE_DIR`: Cache directory for rendered images
+- `PDF2MARKDOWN_OUTPUT_DIR`: Default output directory
+- `PDF2MARKDOWN_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
+- `PDF2MARKDOWN_TEMP_DIR`: Temporary file directory
 
 ## How It Works
 
@@ -849,26 +853,26 @@ echo $OPENAI_API_KEY
 echo "OPENAI_API_KEY=your-key" > .env
 
 # Check configuration
-pdf-to-markdown document.pdf --save-config debug-config.yaml
+pdf2markdown document.pdf --save-config debug-config.yaml
 # Then inspect debug-config.yaml
 ```
 
 ### Memory Issues
 ```bash
 # Reduce worker count
-pdf-to-markdown large.pdf --page-workers 5
+pdf2markdown large.pdf --page-workers 5
 
 # Lower resolution
-pdf-to-markdown large.pdf --resolution 200
+pdf2markdown large.pdf --resolution 200
 ```
 
 ### Debugging
 ```bash
 # Enable debug logging
-pdf-to-markdown document.pdf --log-level DEBUG
+pdf2markdown document.pdf --log-level DEBUG
 
 # Check cache directory
-ls /tmp/pdf_to_markdown/cache/
+ls /tmp/pdf2markdown/cache/
 ```
 
 ## Development
@@ -891,13 +895,3 @@ hatch run typecheck
 ## License
 
 MIT License - see LICENSE file for details
-
-## Contributing
-
-Contributions are welcome! Please read CONTRIBUTING.md for guidelines.
-
-## Acknowledgments
-
-- PyMuPDF for PDF rendering
-- OpenAI for LLM capabilities
-- The open-source community

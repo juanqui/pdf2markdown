@@ -1,8 +1,8 @@
-# SkyPilot Integration for Dynamic PDF-to-Markdown Processing
+# SkyPilot Integration for Dynamic pdf2markdown Processing
 
 ## Architecture Overview
 
-Your PDF-to-Markdown application can leverage SkyPilot to automatically provision GPU instances, deploy vision-language models like Qwen2.5-VL, process document batches, and tear down resources. This architecture provides cost-effective scaling with automatic cleanup.
+Your pdf2markdown application can leverage SkyPilot to automatically provision GPU instances, deploy vision-language models like Qwen2.5-VL, process document batches, and tear down resources. This architecture provides cost-effective scaling with automatic cleanup.
 
 ```
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
@@ -426,7 +426,7 @@ if __name__ == "__main__":
 ```yaml
 # src/skypilot_tasks/qwen_vl_setup.yaml
 
-name: pdf-to-markdown-qwen
+name: pdf2markdown-qwen
 
 resources:
   cloud: datacrunch

@@ -1,8 +1,8 @@
-# High-level Design Document - PDF-to-Markdown Converter
+# High-level Design Document - pdf2markdown Converter
 
 ## Summary
 
-`pdf-to-markdown` is a Python library and command-line application that leverages LLMs to accurately convert technical PDF documents, such as semiconductor datasheets, to well structured Markdown documents. The project provides both a high-level Python API for programmatic use and a CLI interface for command-line operations.
+`pdf2markdown` is a Python library and command-line application that leverages LLMs to accurately convert technical PDF documents, such as semiconductor datasheets, to well structured Markdown documents. The project provides both a high-level Python API for programmatic use and a CLI interface for command-line operations.
 
 ## Requirements
 
@@ -53,7 +53,7 @@
 * Implements `MarkdownValidator` using PyMarkdown (pymarkdownlnt) for validation.
     * Validates generated markdown for syntax correctness.
     * Can optionally attempt to correct issues by re-prompting the LLM with validation errors.
-    * Configurable rules with sensible defaults for LLM-generated content (ignores overly strict rules like MD013 line length and MD047 trailing newline).
+    * Configurable rules with sensible defaults for LLM-generated content (ignores overly strict rules like MD013 line length, MD047 trailing newline, MD033 inline HTML, MD026 trailing punctuation in headings, and MD042 empty links).
 
 ## Reference - Simplified Prompt
 
