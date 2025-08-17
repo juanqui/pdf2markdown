@@ -11,3 +11,10 @@ __all__ = [
     "create_llm_provider",
     "create_llm_provider_from_schema",
 ]
+
+# Optional import for TransformersLLMProvider
+try:
+    from .transformers import TransformersLLMProvider
+    __all__.append("TransformersLLMProvider")
+except ImportError:
+    pass  # transformers not installed

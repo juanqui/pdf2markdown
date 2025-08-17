@@ -3,23 +3,19 @@
 import logging
 from typing import Any
 
-from tqdm import tqdm
-
 logger = logging.getLogger(__name__)
 
 
 class ProgressTracker:
-    """Tracks progress of pipeline processing with tqdm."""
+    """Tracks progress of pipeline processing."""
 
     def __init__(self, enable: bool = True):
         """Initialize the progress tracker.
 
         Args:
-            enable: Whether to enable progress tracking
+            enable: Whether to enable progress tracking (kept for compatibility)
         """
         self.enable = enable
-        self.document_progress: tqdm | None = None
-        self.page_progress: tqdm | None = None
         self.current_document: str | None = None
 
         # Statistics
@@ -37,11 +33,9 @@ class ProgressTracker:
         Args:
             total_documents: Total number of documents to process
         """
-        if self.enable and total_documents > 0:
-            self.document_progress = tqdm(
-                total=total_documents, desc="Documents", unit="doc", position=0, leave=True
-            )
-            self.stats["total_documents"] = total_documents
+        self.stats["total_documents"] = total_documents
+        if self.enable:
+            logger.info(f"Starting to process {total_documents} document(s)")
 
     def start_page_processing(self, total_pages: int, document_name: str = "") -> None:
         """Start tracking page processing.
@@ -50,13 +44,13 @@ class ProgressTracker:
             total_pages: Total number of pages to process
             document_name: Name of the current document
         """
-        if self.enable and total_pages > 0:
-            desc = f"Pages ({document_name})" if document_name else "Pages"
-            self.page_progress = tqdm(
-                total=total_pages, desc=desc, unit="page", position=1, leave=False
-            )
-            self.stats["total_pages"] += total_pages
-            self.current_document = document_name
+        self.stats["total_pages"] += total_pages
+        self.current_document = document_name
+        if self.enable:
+            if document_name:
+                logger.info(f"Processing {total_pages} pages from {document_name}")
+            else:
+                logger.info(f"Processing {total_pages} pages")
 
     def update_document_progress(self, count: int = 1) -> None:
         """Update document processing progress.
@@ -64,9 +58,11 @@ class ProgressTracker:
         Args:
             count: Number of documents processed
         """
-        if self.document_progress:
-            self.document_progress.update(count)
-            self.stats["completed_documents"] += count
+        self.stats["completed_documents"] += count
+        if self.enable:
+            logger.debug(
+                f"Document progress: {self.stats['completed_documents']}/{self.stats['total_documents']}"
+            )
 
     def update_page_progress(self, count: int = 1, failed: bool = False) -> None:
         """Update page processing progress.
@@ -75,47 +71,53 @@ class ProgressTracker:
             count: Number of pages processed
             failed: Whether the page(s) failed processing
         """
-        if self.page_progress:
-            self.page_progress.update(count)
-
         if failed:
             self.stats["failed_pages"] += count
         else:
             self.stats["completed_pages"] += count
+        
+        if self.enable:
+            total_processed = self.stats["completed_pages"] + self.stats["failed_pages"]
+            logger.debug(
+                f"Page progress: {total_processed}/{self.stats['total_pages']} "
+                f"(completed: {self.stats['completed_pages']}, failed: {self.stats['failed_pages']})"
+            )
 
     def set_document_description(self, description: str) -> None:
-        """Update the document progress bar description.
+        """Update the document progress description.
 
         Args:
             description: New description
         """
-        if self.document_progress:
-            self.document_progress.set_description(description)
+        if self.enable:
+            logger.debug(f"Document: {description}")
 
     def set_page_description(self, description: str) -> None:
-        """Update the page progress bar description.
+        """Update the page progress description.
 
         Args:
             description: New description
         """
-        if self.page_progress:
-            self.page_progress.set_description(description)
+        if self.enable:
+            logger.debug(f"Page: {description}")
 
     def close_page_progress(self) -> None:
-        """Close the page progress bar."""
-        if self.page_progress:
-            self.page_progress.close()
-            self.page_progress = None
+        """Close the page progress tracking."""
+        # No-op without tqdm
+        pass
 
     def close(self) -> None:
-        """Close all progress bars."""
-        if self.page_progress:
-            self.page_progress.close()
-            self.page_progress = None
-
-        if self.document_progress:
-            self.document_progress.close()
-            self.document_progress = None
+        """Close all progress tracking."""
+        if self.enable and self.stats["total_pages"] > 0:
+            success_rate = (
+                self.stats["completed_pages"] / self.stats["total_pages"] * 100
+                if self.stats["total_pages"] > 0
+                else 0
+            )
+            logger.info(
+                f"Processing complete: {self.stats['completed_pages']}/{self.stats['total_pages']} pages "
+                f"({success_rate:.1f}% success rate)"
+            )
 
     def get_stats(self) -> dict[str, Any]:
         """Get progress statistics.

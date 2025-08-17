@@ -13,6 +13,7 @@ from pdf_to_markdown import __version__
 from pdf_to_markdown.config import load_settings
 from pdf_to_markdown.pipeline import PipelineCoordinator
 from pdf_to_markdown.utils import setup_logging
+from pdf_to_markdown.utils.statistics import get_statistics_tracker, reset_statistics
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -29,12 +30,12 @@ logger = logging.getLogger(__name__)
     envvar="OPENAI_API_KEY",
     help="OpenAI API key (can also be set via OPENAI_API_KEY env var)",
 )
-@click.option("--model", default="gpt-4o-mini", help="OpenAI model to use")
-@click.option("--resolution", type=int, default=300, help="DPI resolution for rendering PDF pages")
+@click.option("--model", default=None, help="LLM model to use (overrides config file)")
+@click.option("--resolution", type=int, default=None, help="DPI resolution for rendering PDF pages (overrides config file)")
 @click.option(
-    "--page-workers", type=int, default=10, help="Number of parallel page processing workers"
+    "--page-workers", type=int, default=None, help="Number of parallel page processing workers (overrides config file)"
 )
-@click.option("--no-progress", is_flag=True, help="Disable progress bars")
+@click.option("--no-progress", is_flag=True, help="Disable progress logging")
 @click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
@@ -56,9 +57,9 @@ def main(
     output: Path | None,
     config: Path | None,
     api_key: str | None,
-    model: str,
-    resolution: int,
-    page_workers: int,
+    model: str | None,
+    resolution: int | None,
+    page_workers: int | None,
     no_progress: bool,
     log_level: str,
     cache_dir: Path | None,
@@ -77,8 +78,7 @@ def main(
     setup_logging(level=log_level)
 
     # Add rich handler for better console output
-    if not no_progress:
-        logging.getLogger().handlers = [RichHandler(console=console, rich_tracebacks=True)]
+    logging.getLogger().handlers = [RichHandler(console=console, rich_tracebacks=True)]
 
     try:
         # Load settings
@@ -92,11 +92,11 @@ def main(
 
         if api_key:
             settings.config.llm_provider.api_key = api_key
-        if model:
+        if model is not None:
             settings.config.llm_provider.model = model
-        if resolution:
+        if resolution is not None:
             settings.config.document_parser.resolution = resolution
-        if page_workers:
+        if page_workers is not None:
             settings.config.pipeline.page_workers = page_workers
         if cache_dir:
             settings.config.document_parser.cache_dir = cache_dir
@@ -134,12 +134,20 @@ def main(
         if page_limit:
             console.print(f"Page Limit: {page_limit}")
         console.print()
+        
+        # Reset statistics for this run
+        reset_statistics()
 
         # Run the conversion
         asyncio.run(convert_pdf(input_file, output_path, settings, page_limit))
 
         console.print("\n[green]✓ Conversion complete![/green]")
         console.print(f"Output saved to: {output_path}")
+        
+        # Display statistics report
+        stats = get_statistics_tracker()
+        if stats:
+            stats.print_report(console)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Conversion cancelled by user[/yellow]")
@@ -179,18 +187,33 @@ async def convert_pdf(
     # Write markdown content
     markdown_content = []
     logger.debug(f"Document has {len(document.pages)} pages")
-    for page in sorted(document.pages, key=lambda p: p.page_number):
+
+    # Get the page separator template from settings
+    page_separator_template = settings.config.page_separator
+
+    sorted_pages = sorted(document.pages, key=lambda p: p.page_number)
+    for i, page in enumerate(sorted_pages):
         logger.debug(
             f"Page {page.page_number}: content={bool(page.markdown_content)}, length={len(page.markdown_content) if page.markdown_content else 0}"
         )
         if page.markdown_content:
+            # Add the page content
             markdown_content.append(page.markdown_content)
-            if page.page_number < len(document.pages):
-                markdown_content.append("\n---\n")  # Page separator
+
+            # Add separator between pages (but not after the last page)
+            if i < len(sorted_pages) - 1:
+                # Format the separator with the next page number
+                separator = page_separator_template.format(
+                    page_number=sorted_pages[i + 1].page_number
+                )
+                markdown_content.append(separator)
 
     logger.debug(f"Writing {len(markdown_content)} sections to output file")
+
+    # Join all content and write to file
+    final_content = "".join(markdown_content)
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(markdown_content))
+        f.write(final_content)
 
 
 if __name__ == "__main__":

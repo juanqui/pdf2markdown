@@ -132,47 +132,83 @@ page_parser:
   # Example: "Pay special attention to chemical formulas"
   # additional_instructions: null
   
-  # ==== MARKDOWN VALIDATION SETTINGS ====
-  # Controls validation and correction of generated Markdown
+  # ==== CONTENT VALIDATION PIPELINE ====
+  # Controls validation and correction of generated content
   
-  # Enable/disable markdown validation entirely
-  validate_markdown: true
+  # Enable/disable content validation entirely
+  validate_content: true
   
-  markdown_validator:
-    # Enable/disable the validator (when validate_markdown is true)
-    enabled: true
+  # Validation pipeline configuration
+  validation:
+    # List of validators to run (in order)
+    # Available validators: "markdown", "repetition"
+    validators: ["markdown", "repetition"]
     
-    # Attempt to correct validation issues by re-prompting the LLM
-    # This sends the image again with specific instructions about issues
-    attempt_correction: true
+    # Maximum number of correction attempts
+    # If issues persist after this many attempts, use the best version
+    max_correction_attempts: 2
     
-    # Strict mode applies more rigorous validation rules
-    # Recommended: false for LLM-generated content
-    strict_mode: false
+    # ==== MARKDOWN VALIDATOR ====
+    # Validates markdown syntax and formatting
+    markdown:
+      # Enable/disable this validator
+      enabled: true
+      
+      # Attempt to correct validation issues by re-prompting the LLM
+      attempt_correction: true
+      
+      # Strict mode applies more rigorous validation rules
+      # Recommended: false for LLM-generated content
+      strict_mode: false
+      
+      # Maximum line length for MD013 rule
+      # Technical content often needs longer lines
+      max_line_length: 1000
+      
+      # Additional rules to disable beyond the defaults
+      # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
+      disabled_rules: []
+      
+      # Specific rules to enable that are disabled by default
+      # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
+      enabled_rules: []
+      
+      # Default disabled rules (for reference):
+      # - MD013: Line length (technical content often has long lines)
+      # - MD047: Files must end with single newline
+      # - MD041: First line should be a top-level heading
+      # - MD012: Multiple consecutive blank lines
+      # - MD022: Headings should be surrounded by blank lines
+      # - MD031: Fenced code blocks should be surrounded by blank lines
+      # - MD032: Lists should be surrounded by blank lines
+      # - MD025: Multiple top-level headings
+      # - MD024: Multiple headings with the same content
+      # - MD040: Fenced code blocks should have a language specified
     
-    # Maximum line length for MD013 rule
-    # Technical content often needs longer lines
-    max_line_length: 1000
-    
-    # Additional rules to disable beyond the defaults
-    # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
-    disabled_rules: []
-    
-    # Specific rules to enable that are disabled by default
-    # Format: ["MD001", "MD002"] using rule IDs from pymarkdownlnt
-    enabled_rules: []
-    
-    # Default disabled rules (for reference):
-    # - MD013: Line length (technical content often has long lines)
-    # - MD047: Files must end with single newline
-    # - MD041: First line should be a top-level heading
-    # - MD012: Multiple consecutive blank lines
-    # - MD022: Headings should be surrounded by blank lines
-    # - MD031: Fenced code blocks should be surrounded by blank lines
-    # - MD032: Lists should be surrounded by blank lines
-    # - MD025: Multiple top-level headings
-    # - MD024: Multiple headings with the same content
-    # - MD040: Fenced code blocks should have a language specified
+    # ==== REPETITION VALIDATOR ====
+    # Detects and corrects unwanted repetition in content
+    repetition:
+      # Enable/disable this validator
+      enabled: true
+      
+      # Attempt to correct repetition issues by re-prompting the LLM
+      attempt_correction: true
+      
+      # Detection thresholds
+      consecutive_threshold: 3  # Flag if line repeats 3+ times consecutively
+      window_size: 10  # Check for duplicates within 10-line windows
+      window_threshold: 3  # Flag if line appears 3+ times in window
+      
+      # What to check
+      check_exact_lines: true  # Exact line matches
+      check_normalized_lines: true  # Ignore whitespace/punctuation differences
+      check_paragraphs: true  # Check for duplicate paragraphs
+      check_patterns: true  # Detect repetitive patterns
+      
+      # Pattern detection settings
+      min_pattern_length: 20  # Minimum chars for pattern detection
+      pattern_similarity_threshold: 0.9  # How similar patterns must be (0-1)
+      min_line_length: 5  # Minimum line length to check
 
 # ==============================================================================
 # PIPELINE CONFIGURATION
@@ -202,8 +238,8 @@ pipeline:
     # Maximum processed pages in the output queue
     output_queue_size: 500
   
-  # Show progress bars during processing
-  # Disable for automated/headless environments
+  # Show progress information in logs
+  # Disable for quieter operation in automated environments
   enable_progress: true
   
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -223,6 +259,21 @@ output_dir: ./output
 # Temporary directory for processing files
 # Used for caching and intermediate files
 temp_dir: /tmp/pdf_to_markdown
+
+# Page separator format
+# This text is inserted between pages in the final markdown output
+# Use {page_number} as a placeholder for the page number that follows
+# 
+# Examples:
+#   "\n---\n"                              # Simple horizontal rule (no page number)
+#   "\n\n<!-- Page {page_number} -->\n\n"  # HTML comment with page number (invisible in rendered markdown)
+#   "\n\n--[PAGE: {page_number}]--\n\n"    # Visible separator with page number
+#   "\n\n# Page {page_number}\n\n"         # Heading style separator
+#   "\n<div style=\"page-break-after: always;\"></div>\n"  # HTML page break
+#
+# Note: The separator is added BEFORE each page (except the first)
+# The {page_number} placeholder refers to the page that follows the separator
+page_separator: "\n\n--[PAGE: {page_number}]--\n\n"
 
 # ==============================================================================
 # EXAMPLE CONFIGURATIONS

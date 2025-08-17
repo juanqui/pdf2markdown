@@ -27,9 +27,21 @@ def create_llm_provider(config: dict[str, Any]) -> LLMProvider:
     if provider_type == "openai":
         logger.info("Creating OpenAI LLM provider")
         return OpenAILLMProvider(config)
+    elif provider_type == "transformers":
+        logger.info("Creating Transformers LLM provider")
+        # Import here to avoid requiring transformers dependency if not used
+        try:
+            from .transformers import TransformersLLMProvider
+            return TransformersLLMProvider(config)
+        except ImportError as e:
+            raise ImportError(
+                "transformers library is not installed. "
+                "Install it with: pip install pdf-to-markdown[transformers]"
+            ) from e
     else:
         raise ValueError(
-            f"Unsupported LLM provider type: {provider_type}. " f"Supported types: openai"
+            f"Unsupported LLM provider type: {provider_type}. " 
+            f"Supported types: openai, transformers"
         )
 
 

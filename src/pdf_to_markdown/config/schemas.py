@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DocumentParserConfig(BaseModel):
@@ -28,8 +28,10 @@ class LLMProviderConfig(BaseModel):
     """Configuration for LLM provider."""
 
     provider_type: str = Field(default="openai")
+    
+    # OpenAI-specific fields
     endpoint: str = Field(default="https://api.openai.com/v1")
-    api_key: str
+    api_key: str | None = Field(default=None)
     model: str = Field(default="gpt-4o-mini")
     max_tokens: int = Field(default=4096)
     temperature: float = Field(default=0.1, ge=0, le=2)
@@ -40,6 +42,33 @@ class LLMProviderConfig(BaseModel):
     repetition_penalty: float | None = Field(
         default=None, ge=0.0, le=2.0
     )  # Some providers use this instead
+    
+    # Transformers-specific fields
+    model_name: str | None = Field(default=None)  # HuggingFace model name/path
+    device: str = Field(default="auto")  # Device to run on
+    torch_dtype: str = Field(default="auto")  # Data type for model
+    trust_remote_code: bool = Field(default=True)  # Trust remote code
+    attn_implementation: str = Field(default="sdpa")  # Attention implementation
+    max_new_tokens: int = Field(default=4096)  # Maximum tokens to generate
+    do_sample: bool = Field(default=False)  # Whether to use sampling
+    device_map: str | None = Field(default="auto")  # Device mapping strategy
+    load_in_8bit: bool = Field(default=False)  # Load model in 8-bit mode
+    load_in_4bit: bool = Field(default=False)  # Load model in 4-bit mode
+    cache_dir: str | None = Field(default=None)  # Directory to cache models
+    model_type: str = Field(default="auto")  # Model type hint
+    use_chat_method: bool = Field(default=False)  # Whether model has .chat() method
+    processor_type: str = Field(default="auto")  # Type of processor to use
+    
+    @model_validator(mode="after")
+    def validate_provider_fields(self) -> "LLMProviderConfig":
+        """Validate that required fields are present based on provider type."""
+        if self.provider_type == "openai":
+            if not self.api_key:
+                raise ValueError("api_key is required for OpenAI provider")
+        elif self.provider_type == "transformers":
+            if not self.model_name:
+                raise ValueError("model_name is required for Transformers provider")
+        return self
 
 
 class MarkdownValidatorConfig(BaseModel):
@@ -53,6 +82,32 @@ class MarkdownValidatorConfig(BaseModel):
     enabled_rules: list[str] = Field(default_factory=list)
 
 
+class RepetitionValidatorConfig(BaseModel):
+    """Configuration for repetition validator."""
+
+    enabled: bool = Field(default=True)
+    attempt_correction: bool = Field(default=True)
+    consecutive_threshold: int = Field(default=3, ge=2)
+    window_size: int = Field(default=10, ge=5)
+    window_threshold: int = Field(default=3, ge=2)
+    check_exact_lines: bool = Field(default=True)
+    check_normalized_lines: bool = Field(default=True)
+    check_paragraphs: bool = Field(default=True)
+    check_patterns: bool = Field(default=True)
+    min_pattern_length: int = Field(default=20, ge=10)
+    pattern_similarity_threshold: float = Field(default=0.9, ge=0.5, le=1.0)
+    min_line_length: int = Field(default=5, ge=1)
+
+
+class ValidationConfig(BaseModel):
+    """Configuration for the validation pipeline."""
+
+    validators: list[str] = Field(default_factory=lambda: ["markdown", "repetition"])
+    markdown: MarkdownValidatorConfig = Field(default_factory=MarkdownValidatorConfig)
+    repetition: RepetitionValidatorConfig = Field(default_factory=RepetitionValidatorConfig)
+    max_correction_attempts: int = Field(default=2, ge=1, le=5)
+
+
 class PageParserConfig(BaseModel):
     """Configuration for page parser."""
 
@@ -60,9 +115,14 @@ class PageParserConfig(BaseModel):
     # Parser-specific fields
     prompt_template: Path | None = Field(default=None)
     additional_instructions: str | None = None
-    # Markdown validation
-    validate_markdown: bool = Field(default=True)
-    markdown_validator: MarkdownValidatorConfig = Field(default_factory=MarkdownValidatorConfig)
+    
+    # Content validation configuration
+    validate_content: bool = Field(default=True)
+    validation: ValidationConfig = Field(default_factory=ValidationConfig)
+    
+    # Legacy validation fields (for backward compatibility)
+    validate_markdown: bool | None = Field(default=None)
+    markdown_validator: MarkdownValidatorConfig | None = Field(default=None)
 
     @field_validator("prompt_template", mode="before")
     @classmethod
@@ -71,6 +131,30 @@ class PageParserConfig(BaseModel):
         if v and isinstance(v, str):
             return Path(v)
         return v
+    
+    @model_validator(mode="after")
+    def handle_legacy_validation(self) -> "PageParserConfig":
+        """Handle legacy validation configuration for backward compatibility."""
+        if self.validate_markdown is not None or self.markdown_validator is not None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Using deprecated validation configuration. "
+                "Please update to use 'validation' field instead."
+            )
+            
+            # Convert legacy config to new format
+            if self.validate_markdown is False:
+                self.validate_content = False
+            elif self.markdown_validator is not None:
+                self.validation.markdown = self.markdown_validator
+                self.validation.validators = ["markdown"]
+            
+            # Clear deprecated fields
+            self.validate_markdown = None
+            self.markdown_validator = None
+        
+        return self
 
 
 class QueueConfig(BaseModel):
@@ -108,6 +192,7 @@ class AppConfig(BaseModel):
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     output_dir: Path = Field(default=Path("./output"))
     temp_dir: Path = Field(default=Path("/tmp/pdf_to_markdown"))
+    page_separator: str = Field(default="\n\n--[PAGE: {page_number}]--\n\n")
 
     @field_validator("output_dir", "temp_dir", mode="before")
     @classmethod

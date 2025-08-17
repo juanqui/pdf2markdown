@@ -97,6 +97,19 @@ class QueueManager:
             return item
         except asyncio.TimeoutError:
             return None
+    
+    async def requeue_document(self, item: QueueItem) -> None:
+        """Requeue a document item, preserving its retry count.
+        
+        Args:
+            item: QueueItem to requeue with preserved retry count
+        """
+        try:
+            # Use negative priority to ensure it's processed after new items
+            await self.document_queue.put((-item.priority.value, item))
+            logger.debug(f"Requeued document with retry_count={item.retry_count}")
+        except asyncio.QueueFull:
+            raise QueueOverflowError("Document queue is full")
 
     async def add_page(self, page: Page, priority: QueuePriority = QueuePriority.NORMAL) -> None:
         """Add a page to the processing queue.
@@ -131,6 +144,19 @@ class QueueManager:
             return item
         except asyncio.TimeoutError:
             return None
+    
+    async def requeue_page(self, item: QueueItem) -> None:
+        """Requeue a page item, preserving its retry count.
+        
+        Args:
+            item: QueueItem to requeue with preserved retry count
+        """
+        try:
+            # Use negative priority to ensure it's processed after new items
+            await self.page_queue.put((-item.priority.value, item))
+            logger.debug(f"Requeued page with retry_count={item.retry_count}")
+        except asyncio.QueueFull:
+            raise QueueOverflowError("Page queue is full")
 
     async def add_output(self, data: Any) -> None:
         """Add processed output to the output queue.

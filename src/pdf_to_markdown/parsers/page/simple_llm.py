@@ -14,7 +14,9 @@ from pdf_to_markdown.core import (
     ProcessingStatus,
 )
 from pdf_to_markdown.llm_providers import LLMProvider
-from pdf_to_markdown.validators import MarkdownValidator
+from pdf_to_markdown.utils.markdown_cleaner import clean_llm_output
+from pdf_to_markdown.utils.statistics import get_statistics_tracker
+from pdf_to_markdown.validators import BaseValidator, create_validators
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +42,13 @@ class SimpleLLMPageParser(PageParser):
             raise ValueError("LLM provider is required for SimpleLLMPageParser")
         self.llm_provider = llm_provider
 
-        # Initialize markdown validator if enabled
-        self.validate_markdown = config.get("validate_markdown", True)
-        self.markdown_validator = None
-
-        if self.validate_markdown:
-            validator_config = config.get("markdown_validator", {})
-            # Set default configuration for validator
-            validator_config.setdefault("attempt_correction", True)
-            validator_config.setdefault("max_line_length", 1000)
-            self.markdown_validator = MarkdownValidator(validator_config)
-            logger.info("Markdown validation enabled")
+        # Initialize validators from configuration
+        logger.info(f"Initializing validators with config: validate_content={config.get('validate_content')}, validation={config.get('validation')}")
+        self.validators = self._initialize_validators(config)
+        # Get max_correction_attempts from validation config
+        validation_config = config.get("validation", {})
+        self.max_correction_attempts = validation_config.get("max_correction_attempts", 2)
+        logger.info(f"Initialized {len(self.validators)} validators, max_correction_attempts={self.max_correction_attempts}")
 
         # Load prompt template
         template_path = config.get("prompt_template")
@@ -63,7 +61,8 @@ class SimpleLLMPageParser(PageParser):
         self.prompt_template = self._load_template(template_path)
 
         logger.info(
-            f"Initialized SimpleLLMPageParser with provider={self.llm_provider.__class__.__name__}"
+            f"Initialized SimpleLLMPageParser with provider={self.llm_provider.__class__.__name__}, "
+            f"validators={[v.name for v in self.validators]}"
         )
 
     def _load_template(self, template_path: Path) -> Template:
@@ -87,6 +86,54 @@ class SimpleLLMPageParser(PageParser):
             with open(template_path) as f:
                 return Template(f.read())
 
+    def _initialize_validators(self, config: dict[str, Any]) -> list[BaseValidator]:
+        """Initialize validators from configuration.
+
+        Args:
+            config: Configuration dictionary with optional 'validation' section
+
+        Returns:
+            List of configured validators
+        """
+        # Check if validation is enabled at all
+        if not config.get("validate_content", True):
+            logger.info("Content validation disabled")
+            return []
+
+        # Get validation configuration
+        validation_config = config.get("validation", {})
+
+        # If old-style configuration, convert it (only if the new config isn't present)
+        # Check for actual values, not just presence of keys (which might be None)
+        has_legacy_config = (config.get("validate_markdown") is not None or 
+                           config.get("markdown_validator") is not None)
+        has_new_config = bool(validation_config)
+        
+        if has_legacy_config and not has_new_config:
+            logger.warning("Using legacy validation configuration format")
+            # Create markdown validator config from old format
+            markdown_config = config.get("markdown_validator", {})
+            if markdown_config is None:
+                markdown_config = {}
+            markdown_config["enabled"] = config.get("validate_markdown", True)
+            validation_config = {
+                "validators": ["markdown"],
+                "markdown": markdown_config,
+            }
+
+        # Default configuration if not specified
+        if not validation_config:
+            validation_config = {
+                "validators": ["markdown", "repetition"],
+                "markdown": {"enabled": True, "attempt_correction": True},
+                "repetition": {"enabled": True, "attempt_correction": True},
+            }
+
+        # Create validators
+        validators = create_validators(validation_config)
+        logger.info(f"Initialized {len(validators)} validators")
+        return validators
+
     async def parse(self, page: Page) -> Page:
         """Convert a page image to markdown.
 
@@ -100,6 +147,10 @@ class SimpleLLMPageParser(PageParser):
             PageParsingError: If there's an error parsing the page
         """
         logger.info(f"Parsing page {page.page_number} with LLM")
+        
+        # Track conversion time
+        stats = get_statistics_tracker()
+        stats.start_page_conversion(page.page_number)
 
         if not page.image_path or not page.image_path.exists():
             raise PageParsingError(f"Image not found for page {page.page_number}")
@@ -117,41 +168,19 @@ class SimpleLLMPageParser(PageParser):
 
             # Call LLM provider to extract text
             response = await self.llm_provider.invoke_with_image(prompt, page.image_path)
-            markdown_content = response.content
 
-            # Validate and potentially correct the markdown if enabled
-            if self.validate_markdown and self.markdown_validator:
-                logger.debug(f"Validating markdown for page {page.page_number}")
+            # Clean the LLM output (remove code fences, etc.)
+            markdown_content = clean_llm_output(response.content)
 
-                validation_result = await self.markdown_validator.validate_and_correct(
-                    markdown_content, page, self.llm_provider, self.prompt_template
+            # Run validation pipeline if validators are configured
+            logger.info(f"Validators configured: {len(self.validators)} validators")
+            if self.validators:
+                logger.info(f"Running validation pipeline for page {page.page_number}")
+                markdown_content = await self._run_validation_pipeline(
+                    markdown_content, page
                 )
-
-                if not validation_result.is_valid:
-                    issues_summary = validation_result.get_issues_summary()
-                    logger.warning(f"Page {page.page_number} validation issues:\n{issues_summary}")
-
-                    # Use corrected markdown if available and better
-                    if validation_result.corrected_markdown:
-                        # Check if correction actually improved things
-                        corrected_validation = self.markdown_validator.validate(
-                            validation_result.corrected_markdown
-                        )
-
-                        if corrected_validation.is_valid or (
-                            len(corrected_validation.issues) < len(validation_result.issues)
-                        ):
-                            logger.info(
-                                f"Using corrected markdown for page {page.page_number} "
-                                f"(issues: {len(validation_result.issues)} -> {len(corrected_validation.issues)})"
-                            )
-                            markdown_content = validation_result.corrected_markdown
-                        else:
-                            logger.warning(
-                                f"Correction did not improve page {page.page_number}, using original"
-                            )
-                else:
-                    logger.debug(f"Page {page.page_number} markdown validation passed")
+            else:
+                logger.warning(f"No validators configured, skipping validation for page {page.page_number}")
 
             # Update page with markdown content
             page.markdown_content = markdown_content
@@ -160,6 +189,9 @@ class SimpleLLMPageParser(PageParser):
             # Update metadata
             if page.metadata:
                 page.metadata.extraction_timestamp = datetime.now()
+            
+            # Mark conversion complete
+            stats.end_page_conversion(page.page_number)
 
             logger.info(
                 f"Successfully parsed page {page.page_number}, content length: {len(markdown_content) if markdown_content else 0}"
@@ -170,7 +202,218 @@ class SimpleLLMPageParser(PageParser):
             logger.error(f"Error parsing page {page.page_number}: {e}")
             page.status = ProcessingStatus.FAILED
             page.error_message = str(e)
+            stats.record_page_failure(page.page_number)
             raise PageParsingError(f"Failed to parse page {page.page_number}: {e}")
+
+    async def _run_validation_pipeline(
+        self, content: str, page: Page
+    ) -> str:
+        """Run the validation pipeline on content.
+
+        Args:
+            content: The content to validate
+            page: The page object
+
+        Returns:
+            Validated and potentially corrected content
+        """
+        logger.debug(f"Running validation pipeline for page {page.page_number}")
+
+        # Track validation statistics
+        stats = get_statistics_tracker()
+        total_issues_found = 0
+        total_corrections = 0
+        
+        current_content = content
+        correction_attempt = 0
+
+        while correction_attempt < self.max_correction_attempts:
+            all_issues = []
+            needs_correction = False
+
+            # Run each validator and collect issues
+            for validator in self.validators:
+                logger.debug(f"Checking validator {validator.name}: enabled={validator.enabled}")
+                if not validator.enabled:
+                    logger.debug(f"Skipping disabled validator: {validator.name}")
+                    continue
+
+                logger.debug(f"Running {validator.name} validator on page {page.page_number}")
+                result = await validator.validate(current_content, page)
+
+                if not result.is_valid:
+                    all_issues.extend(result.issues)
+                    if validator.attempt_correction:
+                        needs_correction = True
+
+                    # Log issues from this validator
+                    if result.issues:
+                        logger.info(
+                            f"{validator.name} found {len(result.issues)} issues on page {page.page_number}"
+                        )
+
+            # Track issues found
+            if all_issues and correction_attempt == 0:
+                total_issues_found = len(all_issues)
+            
+            # If all valid or no correction needed, we're done
+            if not needs_correction or len(all_issues) == 0:
+                if len(all_issues) == 0:
+                    logger.debug(f"Page {page.page_number} passed all validators")
+                else:
+                    logger.info(
+                        f"Page {page.page_number} has {len(all_issues)} issues but correction disabled"
+                    )
+                break
+
+            # Log all issues found
+            logger.info(
+                f"Page {page.page_number} validation found {len(all_issues)} total issues, attempting correction"
+            )
+
+            # Create combined correction prompt (include the previous attempt for context)
+            correction_prompt = self._create_combined_correction_prompt(
+                all_issues, page, previous_attempt=current_content
+            )
+
+            try:
+                # Track correction attempt
+                total_corrections += 1
+                
+                # Get corrected content from LLM
+                response = await self.llm_provider.invoke_with_image(
+                    correction_prompt, page.image_path
+                )
+                corrected_content = clean_llm_output(response.content)
+
+                # Validate the corrected content
+                corrected_issues = []
+                for validator in self.validators:
+                    if validator.enabled:
+                        result = await validator.validate(corrected_content, page)
+                        corrected_issues.extend(result.issues)
+
+                # Check if correction improved things
+                if len(corrected_issues) < len(all_issues):
+                    logger.info(
+                        f"Correction improved page {page.page_number}: "
+                        f"{len(all_issues)} -> {len(corrected_issues)} issues"
+                    )
+                    current_content = corrected_content
+                elif len(corrected_issues) == 0:
+                    logger.info(f"Correction resolved all issues for page {page.page_number}")
+                    current_content = corrected_content
+                    break
+                else:
+                    logger.warning(
+                        f"Correction did not improve page {page.page_number}: "
+                        f"{len(all_issues)} -> {len(corrected_issues)} issues"
+                    )
+                    # Don't update content if it didn't improve
+                    break
+
+            except Exception as e:
+                logger.error(f"Error during correction attempt {correction_attempt + 1}: {e}")
+                break
+
+            correction_attempt += 1
+
+        if correction_attempt >= self.max_correction_attempts:
+            logger.warning(
+                f"Reached max correction attempts ({self.max_correction_attempts}) for page {page.page_number}"
+            )
+        
+        # Record validation statistics
+        issues_resolved = max(0, total_issues_found - len(all_issues)) if 'all_issues' in locals() else total_issues_found
+        stats.record_validation_stats(
+            page.page_number,
+            corrections=total_corrections,
+            issues_found=total_issues_found,
+            issues_resolved=issues_resolved
+        )
+
+        return current_content
+
+    def _create_combined_correction_prompt(
+        self, all_issues: list, page: Page, previous_attempt: str | None = None
+    ) -> str:
+        """Create a combined correction prompt from all validator issues.
+
+        Args:
+            all_issues: List of all validation issues
+            page: The page object
+            previous_attempt: The previous markdown extraction attempt (optional)
+
+        Returns:
+            Combined correction prompt
+        """
+        # Group issues by validator
+        issues_by_validator = {}
+        for issue in all_issues:
+            # Determine which validator this issue came from based on rule prefix
+            for validator in self.validators:
+                if issue.rule_id.startswith(validator.get_rule_prefix()):
+                    if validator.name not in issues_by_validator:
+                        issues_by_validator[validator.name] = []
+                    issues_by_validator[validator.name].append(issue)
+                    break
+
+        # Collect correction instructions from each validator
+        all_instructions = []
+        for validator in self.validators:
+            if validator.name in issues_by_validator:
+                validator_issues = issues_by_validator[validator.name]
+                if validator_issues and validator.attempt_correction:
+                    instructions = validator.create_correction_instructions(validator_issues)
+                    if instructions:
+                        all_instructions.append(instructions)
+
+        # Combine all instructions
+        combined_instructions = "\n\n".join(all_instructions)
+
+        # Add the previous attempt if provided to give context
+        previous_attempt_section = ""
+        if previous_attempt:
+            # Truncate if too long (keep first 2000 chars for context)
+            truncated = previous_attempt[:2000] + "..." if len(previous_attempt) > 2000 else previous_attempt
+            previous_attempt_section = f"""
+## Previous Extraction Attempt
+
+Your previous markdown extraction had validation issues. Here's the beginning of what you generated:
+
+```markdown
+{truncated}
+```
+
+Please review the issues below and generate a corrected version.
+"""
+
+        # Add overall guidance
+        final_instructions = f"""
+# Correction Required
+{previous_attempt_section}
+Please extract the content from the image again, addressing the following issues:
+
+{combined_instructions}
+
+## General Requirements
+
+1. Output ONLY the extracted markdown content from the document
+2. Do not include any explanations or comments
+3. Ensure all issues mentioned above are resolved
+4. Preserve all information from the source document
+5. Maintain proper markdown formatting throughout
+6. Learn from the previous attempt and avoid repeating the same mistakes
+"""
+
+        # Render the template with correction instructions
+        prompt = self.prompt_template.render(
+            page_number=page.page_number,
+            total_pages=page.metadata.total_pages if page.metadata else None,
+            additional_instructions=final_instructions,
+        )
+
+        return prompt
 
     async def cleanup(self) -> None:
         """Cleanup resources."""

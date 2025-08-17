@@ -19,6 +19,7 @@ from pdf_to_markdown.core import (
     PageMetadata,
     ProcessingStatus,
 )
+from pdf_to_markdown.utils.statistics import get_statistics_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,10 @@ class SimpleDocumentParser(DocumentParser):
             DocumentParsingError: If there's an error parsing the document
         """
         logger.info(f"Starting to parse document: {document_path}")
+        
+        # Get statistics tracker
+        stats = get_statistics_tracker()
+        stats.start_parsing()
 
         # Validate document first
         self.validate_document(document_path)
@@ -119,10 +124,16 @@ class SimpleDocumentParser(DocumentParser):
                 logger.info(
                     f"Limiting processing to {pages_to_process} pages (out of {pdf_doc.page_count})"
                 )
+            
+            # Record total pages in statistics
+            stats.total_pages = pages_to_process
 
             # Process each page
             for page_num in range(pages_to_process):
                 logger.debug(f"Processing page {page_num + 1}/{pages_to_process}")
+                
+                # Track page parsing time
+                stats.start_page_parsing(page_num + 1)
 
                 # Load the page
                 pdf_page = pdf_doc.load_page(page_num)
@@ -168,12 +179,18 @@ class SimpleDocumentParser(DocumentParser):
 
                 # Add page to document
                 document.add_page(page)
+                
+                # Mark page parsing complete
+                stats.end_page_parsing(page_num + 1)
 
                 # Clean up pixmap
                 pix = None
 
             # Close the PDF document
             pdf_doc.close()
+            
+            # Mark parsing phase complete
+            stats.end_parsing()
 
             # Update document status
             document.status = ProcessingStatus.PENDING  # Ready for page parsing

@@ -9,11 +9,15 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 - 🔢 **Equation Support**: Preserves mathematical equations in LaTeX format
 - 🖼️ **Image Handling**: Describes images and preserves captions
 - ⚡ **Parallel Processing**: Processes multiple pages concurrently for speed
-- 📈 **Progress Tracking**: Real-time progress bars with tqdm
+- 📈 **Progress Tracking**: Clear logging of processing status
 - 🔧 **Configurable**: Extensive configuration options via YAML or CLI
 - 🔄 **Retry Logic**: Automatic retry with exponential backoff for reliability
-- ✅ **Markdown Validation**: Built-in validation and correction using PyMarkdown
+- ✅ **Validation Pipeline**: Extensible validation system with multiple validators
+- 🔍 **Repetition Detection**: Automatically detects and corrects content repetition
+- ✔️ **Markdown Validation**: Built-in syntax validation and correction using PyMarkdown
 - 🎯 **Pure Output**: Generates only document content without additional commentary
+- 🧹 **Smart Cleaning**: Automatically removes markdown code fences that LLMs sometimes add
+- 📄 **Configurable Page Separators**: Customize how pages are separated in the output
 
 ## Installation
 
@@ -43,6 +47,9 @@ cd pdf-to-markdown
 
 # Install the package
 pip install -e .
+
+# Optional: Install with transformers support for local models
+pip install -e ".[transformers]"
 ```
 
 ## Quick Start
@@ -94,7 +101,7 @@ pdf-to-markdown document.pdf --config my-config.yaml
 # Parallel processing with more workers
 pdf-to-markdown document.pdf --page-workers 20
 
-# Disable progress bars for automation
+# Disable progress logging for automation
 pdf-to-markdown document.pdf --no-progress
 
 # Save configuration for reuse
@@ -159,21 +166,40 @@ page_parser:
   prompt_template: null  # Optional custom prompt template path
   additional_instructions: null  # Optional additional LLM instructions
   
-  # Markdown validation settings
-  validate_markdown: true  # Enable markdown validation
-  markdown_validator:
-    enabled: true  # Enable validation
-    attempt_correction: true  # Try to fix issues by re-prompting LLM
-    strict_mode: false  # Use relaxed mode for LLM-generated content
-    max_line_length: 1000  # Max line length (MD013 rule)
-    disabled_rules: []  # Additional rules to disable
-    enabled_rules: []  # Specific rules to enable
-    # Note: Common overly-strict rules are disabled by default:
-    # MD013 (line length), MD047 (trailing newline), MD041 (first line heading),
-    # MD012 (multiple blank lines), MD022 (headings surrounded by blank lines),
-    # MD031 (code blocks surrounded by blank lines), MD032 (lists surrounded by blank lines),
-    # MD025 (multiple top-level headings), MD024 (duplicate heading content),
-    # MD040 (fenced code blocks should have language specified)
+  # Content validation pipeline configuration
+  validate_content: true  # Enable content validation
+  
+  validation:
+    # List of validators to run (in order)
+    validators: ["markdown", "repetition"]
+    
+    # Maximum number of correction attempts
+    max_correction_attempts: 2
+    
+    # Markdown validator - checks syntax and formatting
+    markdown:
+      enabled: true  # Enable this validator
+      attempt_correction: true  # Try to fix issues by re-prompting LLM
+      strict_mode: false  # Use relaxed mode for LLM-generated content
+      max_line_length: 1000  # Max line length (MD013 rule)
+      disabled_rules: []  # Additional rules to disable
+      enabled_rules: []  # Specific rules to enable
+      # Note: Common overly-strict rules are disabled by default
+    
+    # Repetition validator - detects and corrects unwanted repetition
+    repetition:
+      enabled: true  # Enable this validator
+      attempt_correction: true  # Try to fix repetition issues
+      consecutive_threshold: 3  # Flag 3+ consecutive duplicate lines
+      window_size: 10  # Check within 10-line windows
+      window_threshold: 3  # Flag 3+ occurrences in window
+      check_exact_lines: true  # Check for exact duplicates
+      check_normalized_lines: true  # Check ignoring whitespace/punctuation
+      check_paragraphs: true  # Check for duplicate paragraphs
+      check_patterns: true  # Detect repetitive patterns
+      min_pattern_length: 20  # Minimum chars for pattern detection
+      pattern_similarity_threshold: 0.9  # Similarity threshold (0-1)
+      min_line_length: 5  # Minimum line length to check
 
 # Pipeline Configuration
 pipeline:
@@ -189,6 +215,7 @@ pipeline:
 # Output Configuration
 output_dir: ./output  # Default output directory
 temp_dir: /tmp/pdf_to_markdown  # Temporary file directory
+page_separator: "\n\n--[PAGE: {page_number}]--\n\n"  # Separator between pages
 ```
 
 #### Configuration Hierarchy
@@ -215,9 +242,9 @@ The `llm_provider` section is shared across all components that need LLM access.
 
 **Supported Providers:**
 - `openai`: Any OpenAI-compatible API (OpenAI, Azure OpenAI, local servers with OpenAI-compatible endpoints)
+- `transformers`: Local models using HuggingFace Transformers (requires optional dependencies)
 
 **Future Providers (planned):**
-- `transformers`: Local models using HuggingFace Transformers
 - `ollama`: Local models via Ollama
 - `anthropic`: Anthropic Claude API
 - `google`: Google Gemini API
@@ -254,6 +281,51 @@ llm_provider:
   timeout: 120
 ```
 
+#### Using Local Models with Transformers
+
+The Transformers provider allows you to run models locally using HuggingFace Transformers. This is useful for:
+- Running without API costs
+- Processing sensitive documents locally
+- Using specialized models not available via APIs
+- Running on systems with GPU acceleration
+
+**Installation:**
+```bash
+# Install with transformers support
+pip install -e ".[transformers]"
+```
+
+**Configuration Example:**
+```yaml
+llm_provider:
+  provider_type: transformers
+  model_name: "openbmb/MiniCPM-V-4"  # HuggingFace model ID
+  device: "auto"  # or "cuda", "cpu", "cuda:0", etc.
+  torch_dtype: "bfloat16"  # or "float16", "float32", "auto"
+  max_new_tokens: 4096
+  temperature: 0.1
+  do_sample: false
+  
+  # Optional: Use 4-bit quantization to save memory
+  load_in_4bit: true
+  
+  # Optional: For models with .chat() method
+  use_chat_method: true
+```
+
+**Supported Models (examples):**
+- **MiniCPM-V series**: `openbmb/MiniCPM-V-4`, `openbmb/MiniCPM-V-2_6`
+- **Nanonets OCR**: `nanonets/Nanonets-OCR-s`
+- **Other vision models**: Any model supporting image-text-to-text generation
+
+**Performance Tips:**
+- Use `load_in_4bit: true` or `load_in_8bit: true` to reduce memory usage
+- Set `page_workers: 1` in pipeline config for local models (they use more memory)
+- Use `device_map: "auto"` for multi-GPU systems
+- Consider using `attn_implementation: "flash_attention_2"` for faster inference (if supported)
+
+See `config/transformers_example.yaml` for a complete configuration example.
+
 ## Environment Variables
 
 ### LLM Provider Variables
@@ -273,8 +345,10 @@ llm_provider:
 2. **LLM Provider**: The configured LLM provider handles communication with the AI model
 3. **Image Processing**: Each page image is sent to the LLM with vision capabilities
 4. **Content Extraction**: The LLM extracts and formats content as Markdown
-5. **Validation**: Generated Markdown is validated for syntax correctness
-6. **Correction** (optional): If validation fails, the LLM can be re-prompted to fix issues
+5. **Validation Pipeline**: Content passes through multiple validators:
+   - **Markdown Validator**: Checks syntax and formatting
+   - **Repetition Validator**: Detects unwanted repetition patterns
+6. **Correction** (optional): If issues are found, the LLM is re-prompted with specific instructions to fix them
 7. **Assembly**: Processed pages are combined into a single Markdown document
 
 ### Architecture Overview
@@ -284,7 +358,10 @@ The application uses a modular architecture with these key components:
 - **LLM Provider**: Abstraction layer for different LLM services (OpenAI, local models, etc.)
 - **Document Parser**: Converts PDF pages to images
 - **Page Parser**: Converts images to Markdown using LLM
-- **Markdown Validator**: Validates and optionally corrects generated Markdown
+- **Validation Pipeline**: Extensible system with multiple validators:
+  - **Markdown Validator**: Validates and corrects syntax issues
+  - **Repetition Validator**: Detects and corrects unwanted repetition
+  - Easily extensible for additional validators
 - **Pipeline**: Orchestrates the conversion process with parallel workers
 - **Queue System**: Manages work distribution across workers
 
@@ -300,13 +377,37 @@ The converter preserves:
 - **Technical Elements**: Pin diagrams, electrical characteristics, timing specifications
 - **Special Notations**: Notes, warnings, footnotes, and cross-references
 
-### Output Purity
+### Output Quality
 
-The converter is designed to output **ONLY** the content from the PDF document:
+The converter ensures high-quality output through multiple mechanisms:
+
+#### Output Purity
+- Outputs **ONLY** the content from the PDF document
 - No explanatory text or comments
 - No "Here is the content" preambles
 - No additional formatting suggestions
+- Automatically removes markdown code fences if LLM wraps output
 - Just clean, accurate Markdown representing the original document
+
+#### Validation Pipeline
+- **Syntax Validation**: Ensures proper markdown formatting
+- **Repetition Detection**: Identifies and corrects various types of repetition:
+  - Consecutive duplicate lines
+  - Near-duplicates within sliding windows
+  - Duplicate paragraphs
+  - Repetitive patterns
+- **Extensible System**: Easy to add custom validators for specific needs
+
+### Page Separation
+
+Pages are separated using a configurable separator (default: `--[PAGE: N]--`). You can customize this in the configuration:
+```yaml
+# Examples of page separators:
+page_separator: "\n---\n"                           # Simple horizontal rule
+page_separator: "\n\n<!-- Page {page_number} -->\n\n"  # HTML comment (invisible)
+page_separator: "\n\n# Page {page_number}\n\n"         # Markdown heading
+page_separator: "\n\n--[PAGE: {page_number}]--\n\n"    # Default format
+```
 
 ## Performance
 

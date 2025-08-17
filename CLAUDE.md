@@ -38,7 +38,6 @@
 - **OpenAI Python SDK**: LLM integration
 - **Pydantic**: Configuration validation
 - **asyncio**: Asynchronous processing
-- **tqdm**: Progress bars
 - **Click**: CLI framework
 - **Rich**: Enhanced terminal output
 
@@ -69,7 +68,7 @@ pdf-to-markdown/
 ### 2. Queue-Based Pipeline
 - Separate queues for documents, pages, and output
 - Priority queue support for processing order
-- Configurable worker counts and batch sizes
+- Configurable worker counts
 - Error queue for failed tasks
 
 ### 3. Configuration Management
@@ -87,6 +86,15 @@ pdf-to-markdown/
   - OpenAI-compatible endpoints
   - Future: Local models (Transformers/HuggingFace)
   - Future: Ollama, Anthropic, etc.
+
+### 5. Validation Pipeline
+- Extensible validator system with base `BaseValidator` class
+- Multiple validators running in sequence:
+  - **MarkdownValidator**: Syntax and formatting validation
+  - **RepetitionValidator**: Detects various types of unwanted repetition
+- Automatic correction by re-prompting LLM with specific instructions
+- Configurable validators via YAML
+- Easy to extend with custom validators
 
 ## Development Commands
 
@@ -202,6 +210,32 @@ The prompt template (`ocr_extraction.j2`) instructs the LLM to:
 - Detailed logging at multiple levels
 - Progress preservation on failure
 
+## Validation System Details
+
+### BaseValidator Interface
+All validators inherit from `BaseValidator` and implement:
+- `validate(content, page)`: Validate content and return issues
+- `create_correction_instructions(issues)`: Generate LLM correction prompts
+- `get_rule_prefix()`: Return rule ID prefix (e.g., "MD", "REP")
+
+### RepetitionValidator Detection Strategies
+1. **Consecutive Duplicates**: Lines repeated N times in a row
+2. **Window Duplicates**: Lines appearing multiple times within sliding window
+3. **Normalized Duplicates**: Similar lines ignoring whitespace/punctuation
+4. **Paragraph Duplicates**: Entire paragraphs that repeat
+5. **Pattern Detection**: Repetitive structural patterns
+
+### Validation Pipeline Flow
+1. Initial content extraction from LLM
+2. Run all configured validators
+3. Collect all issues from validators
+4. If issues found and correction enabled:
+   - Create combined correction prompt
+   - Re-prompt LLM with specific instructions
+   - Validate corrected content
+   - Repeat up to max_correction_attempts
+5. Use best version (fewest issues)
+
 ## Future Enhancements
 1. **Additional LLM Provider Implementations**
    - Local LLM support using Transformers/HuggingFace
@@ -214,20 +248,27 @@ The prompt template (`ocr_extraction.j2`) instructs the LLM to:
    - OCR-based parsers (Tesseract, EasyOCR)
    - Hybrid approaches (OCR + LLM)
 
-3. **Advanced Features**
+3. **Additional Validators**
+   - **StructureValidator**: Ensure headers follow logical hierarchy
+   - **CompletionValidator**: Detect if content seems truncated
+   - **LanguageValidator**: Detect if LLM switched languages mid-document
+   - **FormattingConsistencyValidator**: Ensure consistent formatting styles
+   - **ContentAccuracyValidator**: Compare against source for accuracy
+
+4. **Advanced Features**
    - Document structure analysis
    - Table of contents generation
    - Cross-reference resolution
    - Multi-document processing
 
-4. **Output Formats**
+5. **Output Formats**
    - HTML export
    - LaTeX export
    - JSON structured data
 
 ## Debugging Tips
 1. Enable debug logging: `--log-level DEBUG`
-2. Disable progress bars: `--no-progress`
+2. Disable progress logging: `--no-progress`
 3. Check cache directory for rendered images
 4. Monitor queue statistics in logs
 5. Use smaller PDFs for testing
@@ -286,3 +327,4 @@ The prompt template (`ocr_extraction.j2`) instructs the LLM to:
 - API usage tracking
 - We should always update the HLD and LLD when making design changes in our application. These documents are located in the `docs/` directory.
 - We should always update the README.md when adding/changing/removing features from our application. Also when we change how the application is used (i.e. new command lines, changed command lines, updated configuration, etc.)
+- We need to use hatch when running our application, installing dependencies, etc. This is what the project was configured with/for.

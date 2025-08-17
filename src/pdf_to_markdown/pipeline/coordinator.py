@@ -17,6 +17,7 @@ from pdf_to_markdown.parsers import (
     SimpleDocumentParser,
     SimpleLLMPageParser,
 )
+from pdf_to_markdown.utils.statistics import get_statistics_tracker
 
 from .progress import ProgressTracker
 from .queue_manager import QueueManager, QueuePriority
@@ -163,6 +164,11 @@ class PipelineCoordinator(Pipeline):
             Processed Document with markdown content
         """
         logger.info(f"Starting pipeline processing for {document_path}")
+        
+        # Initialize statistics tracking
+        stats = get_statistics_tracker()
+        stats.start_process()
+        stats.start_conversion()  # Conversion starts after parsing
 
         try:
             # Validate the document
@@ -214,6 +220,10 @@ class PipelineCoordinator(Pipeline):
 
             # Stop workers
             await self._stop_workers()
+            
+            # Mark process complete
+            stats.end_conversion()
+            stats.end_process()
 
             # Close progress
             self.progress.close()

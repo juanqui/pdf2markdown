@@ -74,7 +74,7 @@ pdf-to-markdown/
 │       │   ├── queue_manager.py    # Queue management
 │       │   ├── worker.py            # Worker implementation
 │       │   ├── coordinator.py       # Pipeline coordinator
-│       │   └── progress.py          # Progress tracking with tqdm
+│       │   └── progress.py          # Progress tracking and logging
 │       ├── config/
 │       │   ├── __init__.py
 │       │   ├── settings.py          # Configuration management
@@ -487,8 +487,6 @@ classDiagram
     }
     
     class ProgressTracker {
-        +tqdm document_progress
-        +tqdm page_progress
         +update_document_progress(int)
         +update_page_progress(int)
         +close()
@@ -979,7 +977,6 @@ asyncio>=3.4.3
 aiofiles>=23.0.0         # Async file operations
 
 # Progress and CLI
-tqdm>=4.66.0            # Progress bars
 click>=8.1.0            # CLI framework
 rich>=13.0.0            # Rich terminal output
 
@@ -1083,7 +1080,7 @@ def setup_logging(
 2. **Priority Queuing**: Process high-priority documents/pages first
 3. **Connection Pooling**: Reuse HTTP connections to LLM API
 4. **Retry Logic**: Implement exponential backoff for failed operations
-5. **Progress Tracking**: Use tqdm for real-time progress visualization without impacting performance
+5. **Progress Tracking**: Use logging for progress tracking without impacting performance
 
 ### 11.3 Scalability Considerations
 
@@ -1133,7 +1130,7 @@ performance:
 - Implement QueueManager
 - Create Worker classes
 - Implement PipelineCoordinator
-- Add progress tracking with tqdm
+- Add progress tracking with logging
 
 ### Phase 5: Testing and Optimization
 - Add comprehensive unit tests

@@ -108,6 +108,14 @@ class Worker(ABC):
             self.logger.warning(f"Retrying task (attempt {task.retry_count}/{task.max_retries})")
             await self._requeue_task(task)
         else:
+            # Log that we've exhausted retries
+            if task:
+                self.logger.error(
+                    f"Task failed after {task.max_retries} retries. Moving to error queue. Error: {str(error)[:200]}"
+                )
+            else:
+                self.logger.error(f"Task failed with no retry information. Error: {str(error)[:200]}")
+            
             await self.queue_manager.add_error(
                 {
                     "task": task,
@@ -181,7 +189,8 @@ class DocumentWorker(Worker):
 
     async def _requeue_task(self, task: QueueItem) -> None:
         """Requeue a document for retry."""
-        await self.queue_manager.add_document(task.data, task.priority)
+        # IMPORTANT: Requeue the actual task item to preserve retry_count
+        await self.queue_manager.requeue_document(task)
 
 
 class PageWorker(Worker):
@@ -227,7 +236,8 @@ class PageWorker(Worker):
 
     async def _requeue_task(self, task: QueueItem) -> None:
         """Requeue a page for retry."""
-        await self.queue_manager.add_page(task.data, task.priority)
+        # IMPORTANT: Requeue the actual task item to preserve retry_count
+        await self.queue_manager.requeue_page(task)
 
 
 class OutputWorker(Worker):

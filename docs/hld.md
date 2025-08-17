@@ -20,7 +20,7 @@
     * Future implementations could include local providers (using transformers/HuggingFace), Ollama, Anthropic, etc.
 * Implements a robust pipeline-based approach to processing a PDF. It should use multiple queues to support N number of workers for each phase of the work. For example, we might want to have 5 workers converting PDFs to image renders and 10 workers converting each page to markdown.
     * NOTE: A `PageParser` can only parse one document at a time. We can't parallelize the process of generating page renders.
-* Leverages `tqdm` to render progress.
+* Provides clear progress logging.
 * Implements `MarkdownValidator` using PyMarkdown (pymarkdownlnt) for validation.
     * Validates generated markdown for syntax correctness.
     * Can optionally attempt to correct issues by re-prompting the LLM with validation errors.

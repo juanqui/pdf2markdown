@@ -1,6 +1,7 @@
 """OpenAI-compatible LLM provider implementation."""
 
 import base64
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -145,9 +146,37 @@ class OpenAILLMProvider(LLMProvider):
             else:
                 raise LLMConnectionError("Empty response from OpenAI API")
 
+        except json.JSONDecodeError as e:
+            # This typically happens when the API returns HTML (error page) instead of JSON
+            logger.error(f"Invalid JSON response from API: {e}")
+            logger.debug(f"Failed to parse response - likely an HTML error page or rate limit message")
+            raise LLMConnectionError(
+                f"API returned invalid response format (expected JSON). "
+                f"This often happens with rate limits or server errors. Error: {str(e)[:100]}"
+            )
+            
         except Exception as e:
-            logger.error(f"Error calling OpenAI API: {e}")
-            raise LLMConnectionError(f"Failed to call OpenAI API: {e}")
+            # Check if this is a JSON parsing error from the OpenAI client
+            error_msg = str(e)
+            
+            # Log the full error for debugging
+            logger.error(f"Error calling API: {error_msg}")
+            
+            # Check for specific error patterns
+            if "Expecting value" in error_msg:
+                # This is a JSON parsing error
+                logger.error("API returned non-JSON response (possibly HTML error page or rate limit)")
+                raise LLMConnectionError(
+                    f"API returned invalid response (not JSON). "
+                    f"This usually indicates rate limiting, server errors, or invalid endpoint. "
+                    f"Check your API endpoint and credentials."
+                )
+            elif "timeout" in error_msg.lower():
+                raise LLMConnectionError(f"API request timed out after {self.timeout} seconds")
+            elif "connection" in error_msg.lower():
+                raise LLMConnectionError(f"Connection error: {error_msg}")
+            else:
+                raise LLMConnectionError(f"Failed to call API: {error_msg}")
 
     async def invoke_with_image(self, prompt: str, image_path: Path, **kwargs: Any) -> LLMResponse:
         """Invoke the LLM with a text prompt and an image.
