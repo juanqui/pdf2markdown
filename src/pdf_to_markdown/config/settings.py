@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,35 @@ class Settings:
 
         logger.info(f"Settings initialized from {config_path or 'defaults'}")
 
+    def _expand_env_vars(self, data: Any) -> Any:
+        """Recursively expand environment variables in configuration data.
+        
+        Supports ${VAR_NAME} syntax for environment variable substitution.
+        
+        Args:
+            data: Configuration data (dict, list, or scalar)
+            
+        Returns:
+            Data with environment variables expanded
+        """
+        if isinstance(data, dict):
+            return {k: self._expand_env_vars(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._expand_env_vars(item) for item in data]
+        elif isinstance(data, str):
+            # Replace ${VAR_NAME} with environment variable value
+            def replacer(match):
+                var_name = match.group(1)
+                value = os.getenv(var_name)
+                if value is None:
+                    logger.warning(f"Environment variable ${{{var_name}}} not found")
+                    return match.group(0)  # Keep original if not found
+                return value
+            
+            return re.sub(r'\$\{([^}]+)\}', replacer, data)
+        else:
+            return data
+
     def _load_config(self) -> AppConfig:
         """Load configuration from file or use defaults.
 
@@ -53,12 +83,21 @@ class Settings:
         if self.config_path and self.config_path.exists():
             with open(self.config_path) as f:
                 data = yaml.safe_load(f)
+                
+                # Expand environment variables in the configuration
+                data = self._expand_env_vars(data)
 
-                # Ensure API key is present in llm_provider
+                # Ensure llm_provider exists
                 if "llm_provider" not in data:
                     data["llm_provider"] = {}
-                if "api_key" not in data["llm_provider"]:
-                    data["llm_provider"]["api_key"] = os.getenv("OPENAI_API_KEY", "")
+                
+                # Only set API key from env if provider type is openai (or not specified)
+                # and if api_key is not already set (from YAML with env var expansion)
+                provider_type = data["llm_provider"].get("provider_type", "openai")
+                if provider_type == "openai" and "api_key" not in data["llm_provider"]:
+                    api_key = os.getenv("OPENAI_API_KEY")
+                    if api_key:
+                        data["llm_provider"]["api_key"] = api_key
 
                 return AppConfig(**data)
         else:
@@ -71,12 +110,17 @@ class Settings:
         Returns:
             Default AppConfig instance
         """
-        api_key = os.getenv("OPENAI_API_KEY", "")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-
+        # For default config, we'll use OpenAI provider
+        # But we won't require the API key to be set immediately
+        api_key = os.getenv("OPENAI_API_KEY")
+        
+        # Create config without api_key if not set
+        llm_config_args = {}
+        if api_key:
+            llm_config_args["api_key"] = api_key
+        
         return AppConfig(
-            llm_provider=LLMProviderConfig(api_key=api_key),
+            llm_provider=LLMProviderConfig(**llm_config_args),
             document_parser=DocumentParserConfig(),
             page_parser=PageParserConfig(),
             pipeline=PipelineConfig(),
@@ -86,12 +130,13 @@ class Settings:
         """Apply environment variable overrides to configuration."""
         # Ensure llm_provider exists
         if not self.config.llm_provider:
-            self.config.llm_provider = LLMProviderConfig(api_key="")
+            self.config.llm_provider = LLMProviderConfig()
 
-        # Override API key if provided
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            self.config.llm_provider.api_key = api_key
+        # Override API key if provided and using OpenAI provider
+        if self.config.llm_provider.provider_type == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self.config.llm_provider.api_key = api_key
 
         # Override endpoint if provided
         endpoint = os.getenv("OPENAI_API_ENDPOINT")
@@ -180,10 +225,18 @@ class Settings:
         Returns:
             True if configuration is valid
         """
-        # Check API key from top-level llm_provider
-        if not self.config.llm_provider or not self.config.llm_provider.api_key:
-            logger.error("API key is not configured in llm_provider")
-            return False
+        # Check provider-specific requirements
+        if self.config.llm_provider:
+            if self.config.llm_provider.provider_type == "openai":
+                if not self.config.llm_provider.api_key:
+                    logger.error("API key is not configured for OpenAI provider")
+                    return False
+            elif self.config.llm_provider.provider_type == "transformers":
+                # Transformers provider doesn't need an API key
+                # Check for model or model_name
+                if not (self.config.llm_provider.model or self.config.llm_provider.model_name):
+                    logger.error("Model name is not configured for Transformers provider")
+                    return False
 
         # Check directories exist or can be created
         try:

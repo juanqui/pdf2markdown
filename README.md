@@ -302,7 +302,7 @@ llm_provider:
   model_name: "openbmb/MiniCPM-V-4"  # HuggingFace model ID
   device: "auto"  # or "cuda", "cpu", "cuda:0", etc.
   torch_dtype: "bfloat16"  # or "float16", "float32", "auto"
-  max_new_tokens: 4096
+  max_tokens: 4096
   temperature: 0.1
   do_sample: false
   

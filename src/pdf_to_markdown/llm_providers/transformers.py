@@ -3,6 +3,7 @@
 import base64
 import io
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -29,7 +30,7 @@ class TransformersLLMProvider(LLMProvider):
                 - torch_dtype (str): Data type for model ("float16", "bfloat16", "float32", "auto") - default: "auto"
                 - trust_remote_code (bool): Whether to trust remote code - default: True
                 - attn_implementation (str): Attention implementation ("sdpa", "flash_attention_2", "eager") - default: "sdpa"
-                - max_new_tokens (int): Maximum tokens to generate - default: 4096
+                - max_tokens (int): Maximum tokens to generate - default: 4096
                 - temperature (float): Temperature for generation - default: 0.1
                 - do_sample (bool): Whether to use sampling - default: False
                 - device_map (str): Device mapping strategy ("auto", "balanced", etc.) - default: "auto"
@@ -66,7 +67,8 @@ class TransformersLLMProvider(LLMProvider):
         self.cache_dir = config.get("cache_dir")
         
         # Generation configuration
-        self.max_new_tokens = config.get("max_new_tokens", 4096)
+        # Use max_tokens from config, but internally use as max_new_tokens
+        self.max_new_tokens = config.get("max_tokens", 4096)
         self.temperature = config.get("temperature", 0.1)
         self.do_sample = config.get("do_sample", False)
         
@@ -74,6 +76,13 @@ class TransformersLLMProvider(LLMProvider):
         self.model_type = config.get("model_type", "auto")
         self.use_chat_method = config.get("use_chat_method", False)
         self.processor_type = config.get("processor_type", "auto")
+        
+        # Vision model pixel limits
+        self.max_pixels = config.get("max_pixels", 3145728)  # Default: 2048x1536
+        self.min_pixels = config.get("min_pixels", 40000)  # Default: 200x200
+        
+        # Context window limit (to prevent memory issues)
+        self.max_length = config.get("max_length", 8192)  # Default: 8192 tokens (safe for most GPUs)
         
         # Initialize model and processor
         self.model = None
@@ -110,6 +119,13 @@ class TransformersLLMProvider(LLMProvider):
             AutoTokenizer,
         )
         
+        # Try to import Qwen-specific classes
+        try:
+            from transformers import Qwen2VLForConditionalGeneration
+            has_qwen2vl = True
+        except ImportError:
+            has_qwen2vl = False
+        
         torch_dtype = self._get_torch_dtype()
         
         # Common model loading arguments
@@ -139,14 +155,111 @@ class TransformersLLMProvider(LLMProvider):
             # Try to load processor first (for multimodal models)
             if self.processor_type != "tokenizer":
                 try:
-                    self.processor = AutoProcessor.from_pretrained(
-                        self.model_name,
-                        trust_remote_code=self.trust_remote_code,
-                        cache_dir=self.cache_dir,
-                    )
-                    logger.info(f"Loaded processor for {self.model_name}")
+                    # For Qwen2.5-VL, we might need to handle missing torchvision
+                    if "Qwen" in self.model_name and "VL" in self.model_name:
+                        # Try to load the processor components separately
+                        try:
+                            from transformers import Qwen2VLProcessor
+                            self.processor = Qwen2VLProcessor.from_pretrained(
+                                self.model_name,
+                                trust_remote_code=self.trust_remote_code,
+                                cache_dir=self.cache_dir,
+                                min_pixels=self.min_pixels,
+                                max_pixels=self.max_pixels,
+                            )
+                            logger.info(f"Loaded Qwen2VLProcessor for {self.model_name} with max_pixels={self.max_pixels}")
+                        except ImportError:
+                            # Fall back to AutoProcessor with pixel limits
+                            processor_kwargs = {
+                                "trust_remote_code": self.trust_remote_code,
+                                "cache_dir": self.cache_dir,
+                            }
+                            # Add pixel limits if processor supports them
+                            try:
+                                self.processor = AutoProcessor.from_pretrained(
+                                    self.model_name,
+                                    min_pixels=self.min_pixels,
+                                    max_pixels=self.max_pixels,
+                                    **processor_kwargs
+                                )
+                                logger.info(f"Loaded AutoProcessor for {self.model_name} with pixel limits")
+                            except TypeError:
+                                # Processor doesn't support pixel limits
+                                self.processor = AutoProcessor.from_pretrained(
+                                    self.model_name,
+                                    **processor_kwargs
+                                )
+                                logger.info(f"Loaded AutoProcessor for {self.model_name}")
+                    else:
+                        self.processor = AutoProcessor.from_pretrained(
+                            self.model_name,
+                            trust_remote_code=self.trust_remote_code,
+                            cache_dir=self.cache_dir,
+                        )
+                        logger.info(f"Loaded processor for {self.model_name}")
                 except Exception as e:
-                    logger.debug(f"Could not load processor: {e}")
+                    logger.warning(f"Could not load processor for {self.model_name}: {e}")
+                    # Check if this is a torchvision issue we can work around
+                    if "torchvision" in str(e).lower() or "AutoVideoProcessor" in str(e):
+                        logger.info("Attempting to load processor without video support...")
+                        # Try loading just the image processor and tokenizer
+                        try:
+                            from transformers import AutoTokenizer, AutoImageProcessor
+                            # Load tokenizer
+                            self.tokenizer = AutoTokenizer.from_pretrained(
+                                self.model_name,
+                                trust_remote_code=self.trust_remote_code,
+                                cache_dir=self.cache_dir,
+                            )
+                            # Try to load image processor
+                            try:
+                                self.image_processor = AutoImageProcessor.from_pretrained(
+                                    self.model_name,
+                                    trust_remote_code=self.trust_remote_code,
+                                    cache_dir=self.cache_dir,
+                                )
+                                logger.info(f"Loaded tokenizer and image processor separately for {self.model_name}")
+                                # Create a minimal processor-like object
+                                class MinimalProcessor:
+                                    def __init__(self, tokenizer, image_processor):
+                                        self.tokenizer = tokenizer
+                                        self.image_processor = image_processor
+                                        
+                                    def apply_chat_template(self, messages, **kwargs):
+                                        return self.tokenizer.apply_chat_template(messages, **kwargs)
+                                    
+                                    def __call__(self, text=None, images=None, **kwargs):
+                                        result = {}
+                                        # Separate kwargs for tokenizer and image processor
+                                        tok_kwargs = {k: v for k, v in kwargs.items() if k in ['padding', 'truncation', 'max_length', 'return_tensors']}
+                                        img_kwargs = {k: v for k, v in kwargs.items() if k in ['return_tensors', 'do_rescale', 'do_normalize']}
+                                        
+                                        if text:
+                                            tok_result = self.tokenizer(text, **tok_kwargs)
+                                            result.update(tok_result)
+                                        if images:
+                                            img_result = self.image_processor(images, **img_kwargs)
+                                            result.update(img_result)
+                                        return result
+                                    
+                                    def batch_decode(self, *args, **kwargs):
+                                        return self.tokenizer.batch_decode(*args, **kwargs)
+                                
+                                self.processor = MinimalProcessor(self.tokenizer, self.image_processor)
+                                logger.info("Created minimal processor wrapper")
+                            except Exception as img_e:
+                                logger.warning(f"Could not load image processor: {img_e}")
+                                # Processor is not available, but we have tokenizer
+                        except Exception as tok_e:
+                            logger.error(f"Could not create alternative processor: {tok_e}")
+                            if "Qwen" in self.model_name:
+                                raise LLMConnectionError(
+                                    f"Failed to load processor for Qwen model. "
+                                    f"Qwen2.5-VL requires torchvision for full functionality. "
+                                    f"Please install it with: pip install torchvision"
+                                )
+                    elif "Qwen" in self.model_name:
+                        raise LLMConnectionError(f"Failed to load processor for Qwen model: {e}")
                     
             # Load tokenizer if processor wasn't loaded or if specifically requested
             if self.processor is None or self.processor_type == "tokenizer":
@@ -162,6 +275,28 @@ class TransformersLLMProvider(LLMProvider):
             
             # Try different model loading strategies based on model type
             model_loaded = False
+            
+            # Check if this is a Qwen2.5-VL model
+            if has_qwen2vl and "Qwen2.5-VL" in self.model_name or "Qwen2-VL" in self.model_name:
+                try:
+                    # Load model with limited context to prevent memory issues
+                    # Set max_position_embeddings to limit context window
+                    from transformers import AutoConfig
+                    config = AutoConfig.from_pretrained(self.model_name, trust_remote_code=self.trust_remote_code)
+                    # Limit the context window to prevent 59GB memory allocation
+                    if hasattr(config, 'max_position_embeddings') and config.max_position_embeddings > self.max_length:
+                        logger.info(f"Limiting model context from {config.max_position_embeddings} to {self.max_length} tokens")
+                        config.max_position_embeddings = self.max_length
+                    
+                    self.model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        self.model_name, 
+                        config=config,
+                        **model_kwargs
+                    )
+                    logger.info(f"Loaded model as Qwen2VLForConditionalGeneration with max_position_embeddings={self.max_length}")
+                    model_loaded = True
+                except Exception as e:
+                    logger.debug(f"Could not load as Qwen2VLForConditionalGeneration: {e}")
             
             # First try AutoModelForImageTextToText (for vision models)
             if not model_loaded and self.model_type in ["auto", "vision", "image-text-to-text"]:
@@ -230,6 +365,36 @@ class TransformersLLMProvider(LLMProvider):
         else:
             raise ValueError("Either image_path or image_base64 must be provided")
 
+    @staticmethod
+    def _strip_thinking_tags(content: str) -> str:
+        """Strip <think>...</think> tags from the content.
+        
+        This is used to remove reasoning/thinking content from models that
+        output their internal thought process.
+        
+        Args:
+            content: The content potentially containing thinking tags
+            
+        Returns:
+            Content with thinking tags removed
+        """
+        if not content:
+            return content
+            
+        # Remove <think>...</think> tags and their contents
+        # Use non-greedy matching and DOTALL flag to handle multi-line content
+        pattern = r'<think>.*?</think>'
+        cleaned = re.sub(pattern, '', content, flags=re.DOTALL)
+        
+        # Clean up any extra whitespace that might be left
+        cleaned = cleaned.strip()
+        
+        # Log if we actually removed thinking tags
+        if cleaned != content:
+            logger.debug(f"Removed thinking tags from response (original: {len(content)} chars, cleaned: {len(cleaned)} chars)")
+        
+        return cleaned
+
     async def _generate_with_chat_method(self, image: Image.Image, prompt: str, **kwargs: Any) -> str:
         """Generate using model's .chat() method (for models like MiniCPM-V)."""
         msgs = [{"role": "user", "content": [image, prompt]}]
@@ -248,38 +413,83 @@ class TransformersLLMProvider(LLMProvider):
         
         # Generate
         response = self.model.chat(**generation_kwargs)
-        return response
+        
+        # Strip thinking tags before returning
+        return self._strip_thinking_tags(response)
 
     async def _generate_with_processor(self, image: Image.Image, prompt: str, **kwargs: Any) -> str:
         """Generate using processor and standard generation (for most vision models)."""
-        # Prepare messages in chat format
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
+        # Check if this is a Qwen model that needs special handling
+        is_qwen = "Qwen" in self.model_name
         
-        # Apply chat template if available
-        if hasattr(self.processor, "apply_chat_template"):
-            inputs = self.processor.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
-                return_tensors="pt",
+        if is_qwen:
+            # Use Qwen-specific message format
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},  # Pass the PIL image directly
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+            
+            # Apply chat template
+            text = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
             )
+            
+            # Process the image and text for Qwen models
+            # For Qwen, we need to process text and images separately
+            if hasattr(self.processor, 'tokenizer') and hasattr(self.processor, 'image_processor'):
+                # Using our MinimalProcessor
+                inputs = self.processor(
+                    text=[text],
+                    images=[image],
+                    return_tensors="pt",
+                )
+            else:
+                # Using the real Qwen processor - it doesn't accept padding for images
+                text_inputs = self.processor.tokenizer(
+                    text,
+                    padding=True,
+                    return_tensors="pt",
+                )
+                image_inputs = self.processor.image_processor(
+                    images=[image],
+                    return_tensors="pt",
+                )
+                # Combine the inputs
+                inputs = {**text_inputs, **image_inputs}
         else:
-            # Fallback to direct processing
-            inputs = self.processor(
-                images=image,
-                text=prompt,
-                return_tensors="pt",
-                padding=True,
-            )
+            # Standard processing for other models
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+            
+            # Apply chat template if available
+            if hasattr(self.processor, "apply_chat_template"):
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_dict=True,
+                    return_tensors="pt",
+                )
+            else:
+                # Fallback to direct processing
+                inputs = self.processor(
+                    images=image,
+                    text=prompt,
+                    return_tensors="pt",
+                    padding=True,
+                )
         
         # Move inputs to device
         if self.device != "auto" and self.device != "cpu":
@@ -290,6 +500,8 @@ class TransformersLLMProvider(LLMProvider):
                      for k, v in inputs.items()}
         
         # Generation parameters
+        # Note: We only use max_new_tokens, not max_length (which is deprecated for generation)
+        # max_new_tokens controls only the output length, which helps prevent memory issues
         generation_kwargs = {
             "max_new_tokens": kwargs.get("max_new_tokens", self.max_new_tokens),
             "do_sample": self.do_sample,
@@ -303,7 +515,16 @@ class TransformersLLMProvider(LLMProvider):
             output_ids = self.model.generate(**inputs, **generation_kwargs)
         
         # Decode the output
-        if hasattr(self.processor, "batch_decode"):
+        is_qwen = "Qwen" in self.model_name
+        
+        if is_qwen:
+            # For Qwen models, extract only the generated tokens
+            input_len = inputs["input_ids"].shape[1]
+            generated_ids = output_ids[:, input_len:]
+            output_text = self.processor.batch_decode(
+                generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+        elif hasattr(self.processor, "batch_decode"):
             # Extract only the generated tokens (skip input)
             generated_ids = output_ids[:, inputs.get("input_ids", output_ids).shape[1]:]
             output_text = self.processor.batch_decode(
@@ -323,7 +544,8 @@ class TransformersLLMProvider(LLMProvider):
         else:
             raise LLMConnectionError("No method available to decode output")
         
-        return output_text
+        # Strip thinking tags before returning
+        return self._strip_thinking_tags(output_text)
 
     async def invoke_with_image(self, prompt: str, image_path: Path, **kwargs: Any) -> LLMResponse:
         """Invoke the LLM with a text prompt and an image.
@@ -442,6 +664,7 @@ class TransformersLLMProvider(LLMProvider):
             generation_kwargs = {
                 "max_new_tokens": kwargs.get("max_new_tokens", self.max_new_tokens),
                 "do_sample": self.do_sample,
+                "max_length": self.max_length,  # Limit total context to prevent memory issues
             }
             
             if self.do_sample:
@@ -464,6 +687,9 @@ class TransformersLLMProvider(LLMProvider):
                 )[0]
             else:
                 raise LLMConnectionError("No method available to decode output")
+            
+            # Strip thinking tags before returning
+            output_text = self._strip_thinking_tags(output_text)
             
             return LLMResponse(
                 content=output_text,
@@ -514,7 +740,7 @@ class TransformersLLMProvider(LLMProvider):
             return False
         
         if self.max_new_tokens < 1:
-            logger.error(f"Invalid max_new_tokens: {self.max_new_tokens}")
+            logger.error(f"Invalid max_tokens: {self.max_new_tokens}")
             return False
         
         # Check if CUDA is available when requested

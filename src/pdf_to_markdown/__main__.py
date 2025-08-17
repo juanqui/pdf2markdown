@@ -88,7 +88,11 @@ def main(
         if not settings.config.llm_provider:
             from pdf_to_markdown.config.schemas import LLMProviderConfig
 
-            settings.config.llm_provider = LLMProviderConfig(api_key=api_key or "")
+            # Only set api_key if provided
+            llm_config_args = {}
+            if api_key:
+                llm_config_args["api_key"] = api_key
+            settings.config.llm_provider = LLMProviderConfig(**llm_config_args)
 
         if api_key:
             settings.config.llm_provider.api_key = api_key

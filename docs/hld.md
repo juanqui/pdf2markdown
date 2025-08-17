@@ -15,9 +15,11 @@
         * For this first version, let's use `gpt-4o-mini` as the default model. The prompt template has been simplified and emphasizes outputting ONLY the markdown content from the PDF.
 * Modular architecture that supports multiple `LLMProvider` implementations.
     * An LLM Provider is an abstraction that handles communication with Large Language Models.
-    * First version should implement an `OpenAILLMProvider` that supports any OpenAI-compatible API endpoint.
-    * The provider interface should support methods like `invoke_with_image(prompt, image_path)` to process images with text prompts.
-    * Future implementations could include local providers (using transformers/HuggingFace), Ollama, Anthropic, etc.
+    * Implemented providers:
+        * `OpenAILLMProvider`: Supports any OpenAI-compatible API endpoint.
+        * `TransformersLLMProvider`: Runs models locally using HuggingFace Transformers.
+    * The provider interface supports methods like `invoke_with_image(prompt, image_path)` to process images with text prompts.
+    * Future implementations could include Ollama, Anthropic, etc.
 * Implements a robust pipeline-based approach to processing a PDF. It should use multiple queues to support N number of workers for each phase of the work. For example, we might want to have 5 workers converting PDFs to image renders and 10 workers converting each page to markdown.
     * NOTE: A `PageParser` can only parse one document at a time. We can't parallelize the process of generating page renders.
 * Provides clear progress logging.
@@ -25,7 +27,6 @@
     * Validates generated markdown for syntax correctness.
     * Can optionally attempt to correct issues by re-prompting the LLM with validation errors.
     * Configurable rules with sensible defaults for LLM-generated content (ignores overly strict rules like MD013 line length and MD047 trailing newline).
-
 
 ## Reference - Simplified Prompt
 

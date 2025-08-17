@@ -49,7 +49,6 @@ class LLMProviderConfig(BaseModel):
     torch_dtype: str = Field(default="auto")  # Data type for model
     trust_remote_code: bool = Field(default=True)  # Trust remote code
     attn_implementation: str = Field(default="sdpa")  # Attention implementation
-    max_new_tokens: int = Field(default=4096)  # Maximum tokens to generate
     do_sample: bool = Field(default=False)  # Whether to use sampling
     device_map: str | None = Field(default="auto")  # Device mapping strategy
     load_in_8bit: bool = Field(default=False)  # Load model in 8-bit mode
@@ -58,16 +57,25 @@ class LLMProviderConfig(BaseModel):
     model_type: str = Field(default="auto")  # Model type hint
     use_chat_method: bool = Field(default=False)  # Whether model has .chat() method
     processor_type: str = Field(default="auto")  # Type of processor to use
+    # Vision model pixel limits (for memory management)
+    max_pixels: int = Field(default=3145728)  # Maximum pixels (default: 2048x1536)
+    min_pixels: int = Field(default=40000)  # Minimum pixels (default: 200x200)
+    # Model context window limit (to prevent memory issues)
+    max_length: int = Field(default=8192)  # Maximum context length (lower than model's 32k limit for memory)
     
     @model_validator(mode="after")
     def validate_provider_fields(self) -> "LLMProviderConfig":
         """Validate that required fields are present based on provider type."""
         if self.provider_type == "openai":
-            if not self.api_key:
-                raise ValueError("api_key is required for OpenAI provider")
+            # Only require api_key if we're actually going to use the OpenAI provider
+            # Allow None or empty string during config loading
+            pass
         elif self.provider_type == "transformers":
+            # For transformers, if model_name is not set but model is, use model
+            if not self.model_name and self.model:
+                self.model_name = self.model
             if not self.model_name:
-                raise ValueError("model_name is required for Transformers provider")
+                raise ValueError("model_name or model is required for Transformers provider")
         return self
 
 

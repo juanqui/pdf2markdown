@@ -3,6 +3,7 @@
 import base64
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,36 @@ class OpenAILLMProvider(LLMProvider):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
 
+    @staticmethod
+    def _strip_thinking_tags(content: str) -> str:
+        """Strip <think>...</think> tags from the content.
+        
+        This is used to remove reasoning/thinking content from models that
+        output their internal thought process.
+        
+        Args:
+            content: The content potentially containing thinking tags
+            
+        Returns:
+            Content with thinking tags removed
+        """
+        if not content:
+            return content
+            
+        # Remove <think>...</think> tags and their contents
+        # Use non-greedy matching and DOTALL flag to handle multi-line content
+        pattern = r'<think>.*?</think>'
+        cleaned = re.sub(pattern, '', content, flags=re.DOTALL)
+        
+        # Clean up any extra whitespace that might be left
+        cleaned = cleaned.strip()
+        
+        # Log if we actually removed thinking tags
+        if cleaned != content:
+            logger.debug(f"Removed thinking tags from response (original: {len(content)} chars, cleaned: {len(cleaned)} chars)")
+        
+        return cleaned
+
     @retry(
         stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True
     )
@@ -130,6 +161,10 @@ class OpenAILLMProvider(LLMProvider):
             # Extract the response
             if response.choices and len(response.choices) > 0:
                 content = response.choices[0].message.content
+                
+                # Strip thinking tags from reasoning/thinking models
+                content = self._strip_thinking_tags(content)
+                
                 usage = response.usage.model_dump() if response.usage else None
 
                 logger.debug(f"API response length: {len(content) if content else 0}")
