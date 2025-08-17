@@ -164,6 +164,7 @@ class SimpleLLMPageParser(PageParser):
                 page_number=page.page_number,
                 total_pages=page.metadata.total_pages if page.metadata else None,
                 additional_instructions=self.config.get("additional_instructions"),
+                table_format=self.config.get("table_format", "html"),  # Default to HTML
             )
 
             # Call LLM provider to extract text

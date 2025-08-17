@@ -15,7 +15,7 @@
 
 ## Executive Summary
 
-The PDF-to-Markdown converter is a modular, pipeline-based Python application designed to convert technical PDF documents into well-structured Markdown format using Large Language Models (LLMs). The system employs a two-phase processing approach: document parsing (PDF to images) and page parsing (images to Markdown), with support for parallel processing through a queue-based architecture.
+The PDF-to-Markdown converter is a modular, pipeline-based Python library and application designed to convert technical PDF documents into well-structured Markdown format using Large Language Models (LLMs). The system provides both a high-level Python API for programmatic integration and a command-line interface for standalone usage. It employs a two-phase processing approach: document parsing (PDF to images) and page parsing (images to Markdown), with support for parallel processing through a queue-based architecture.
 
 ## Architecture Overview
 
@@ -52,13 +52,27 @@ graph TB
 pdf-to-markdown/
 ├── src/
 │   └── pdf_to_markdown/
-│       ├── __init__.py
+│       ├── __init__.py              # Public API exports
 │       ├── __main__.py              # Entry point for CLI
+│       ├── api/                     # Library API module
+│       │   ├── __init__.py          # Public API exports
+│       │   ├── converter.py         # Main PDFConverter class
+│       │   ├── config.py           # Config and ConfigBuilder classes
+│       │   ├── exceptions.py       # API-specific exceptions
+│       │   └── types.py           # Type definitions
+│       ├── cli/                     # CLI implementation
+│       │   └── main.py             # CLI using library API
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── models.py            # Data models (Page, Document, etc.)
 │       │   ├── interfaces.py        # Abstract base classes
-│       │   └── exceptions.py        # Custom exceptions
+│       │   └── exceptions.py        # Core exceptions
+│       ├── llm_providers/           # LLM provider implementations
+│       │   ├── __init__.py
+│       │   ├── base.py             # LLMProvider ABC
+│       │   ├── factory.py          # Provider factory
+│       │   ├── openai.py           # OpenAI provider
+│       │   └── transformers.py     # Transformers provider
 │       ├── parsers/
 │       │   ├── __init__.py
 │       │   ├── document/
@@ -89,20 +103,95 @@ pdf-to-markdown/
 │           └── logger.py            # Logging configuration
 ├── tests/
 │   ├── __init__.py
+│   ├── test_library_api.py         # Library API tests
 │   ├── unit/
 │   ├── integration/
 │   └── fixtures/
 ├── config/
 │   └── default.yaml                 # Default configuration
-├── requirements.txt
-├── setup.py
+├── pyproject.toml                   # Project configuration for PyPI
 ├── README.md
 └── .env.example
 ```
 
 ## Core Components
 
-### 4.1 LLM Provider System
+### 4.1 Library API Layer
+
+The Library API provides a high-level interface for programmatic use of the pdf-to-markdown converter:
+
+```python
+# api/converter.py
+
+class PDFConverter:
+    """Main converter class for library API"""
+    
+    def __init__(self, config: Optional[Union[Config, ConfigDict]] = None):
+        """Initialize with configuration"""
+        
+    async def convert(
+        self, pdf_path: Union[str, Path],
+        output_path: Optional[Union[str, Path]] = None,
+        progress_callback: Optional[AsyncProgressCallback] = None
+    ) -> str:
+        """Convert PDF to Markdown asynchronously"""
+        
+    def convert_sync(
+        self, pdf_path: Union[str, Path],
+        output_path: Optional[Union[str, Path]] = None,
+        progress_callback: Optional[ProgressCallback] = None
+    ) -> str:
+        """Synchronous wrapper for convert"""
+        
+    async def stream_pages(
+        self, pdf_path: Union[str, Path],
+        progress_callback: Optional[AsyncProgressCallback] = None
+    ) -> AsyncIterator[PageResult]:
+        """Stream pages as they're processed"""
+        
+    async def process_batch(
+        self, pdf_paths: List[Union[str, Path]],
+        output_dir: Optional[Union[str, Path]] = None
+    ) -> List[DocumentResult]:
+        """Process multiple PDFs"""
+```
+
+#### Configuration System
+
+```python
+# api/config.py
+
+class ConfigBuilder:
+    """Builder pattern for creating configurations"""
+    
+    def with_openai(self, api_key: str, model: str = "gpt-4o-mini", **kwargs) -> 'ConfigBuilder':
+        """Configure OpenAI provider"""
+        
+    def with_transformers(self, model_name: str, device: str = "auto", **kwargs) -> 'ConfigBuilder':
+        """Configure Transformers provider"""
+        
+    def with_resolution(self, dpi: int) -> 'ConfigBuilder':
+        """Set PDF rendering resolution"""
+        
+    def with_page_workers(self, workers: int) -> 'ConfigBuilder':
+        """Set number of parallel workers"""
+        
+    def build(self) -> Config:
+        """Build and validate configuration"""
+
+class Config:
+    """Configuration container"""
+    
+    @classmethod
+    def from_dict(cls, config_dict: ConfigDict) -> 'Config':
+        """Create from dictionary"""
+        
+    @classmethod
+    def from_yaml(cls, yaml_path: Union[str, Path]) -> 'Config':
+        """Load from YAML file"""
+```
+
+### 4.2 LLM Provider System
 
 The LLM Provider system abstracts the interface to Large Language Models, allowing for different implementations:
 

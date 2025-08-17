@@ -3,12 +3,53 @@
 Convert the document image to Markdown following these rules:
 
 ## Tables
-Use Markdown pipe syntax:
+{% if table_format == 'markdown' %}
+Use Markdown pipe syntax for ALL tables:
 ```
 | Parameter | Min | Typ | Max | Unit |
 |-----------|----:|----:|----:|------|
 | Voltage   | 1.7 | 3.3 | 3.6 | V    |
 ```
+Rules for Markdown tables:
+- Use pipes (|) to separate columns
+- Include a header separator row with dashes (---)
+- Align columns using colons (:) - left (:---), center (:---:), or right (---:)
+- Keep cell content concise and on single lines when possible
+{% else %}
+Use HTML <table> syntax for ALL tables to preserve complex layouts:
+```html
+<table>
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Min</th>
+      <th>Typ</th>
+      <th>Max</th>
+      <th>Unit</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Voltage</td>
+      <td>1.7</td>
+      <td>3.3</td>
+      <td>3.6</td>
+      <td>V</td>
+    </tr>
+  </tbody>
+</table>
+```
+Rules for HTML tables:
+- Always use <table>, <thead>, <tbody>, <tr>, <th>, and <td> tags
+- Use <thead> for header rows with <th> elements
+- Use <tbody> for data rows with <td> elements
+- For cells spanning multiple columns, use colspan="N"
+- For cells spanning multiple rows, use rowspan="N"
+- For merged cells or complex layouts, use appropriate colspan/rowspan
+- Preserve ALL formatting, alignments, and cell relationships
+- Include style attributes if needed for alignment: style="text-align: right;"
+- For nested tables, embed complete <table> structures within <td> elements
+{% endif %}
 
 ## Headers
 Use # for main sections, ## for subsections, ### for sub-subsections

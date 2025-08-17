@@ -39,3 +39,17 @@ Using llama.cpp:
 ```
 
 Ref: https://github.com/OpenSQZ/MiniCPM-V-CookBook/blob/main/deployment/llama.cpp/minicpm-v4_llamacpp.md
+
+## vLLM - GLM-4.1V-9B-Thinking
+
+```
+vllm serve --trust-remote-code --tensor-parallel-size 2 --max-model-len 32768 --gpu-memory-utilization 0.90 --enforce-eager --host 0.0.0.0 --port 7080 zai-org/GLM-4.1V-9B-Thinking
+```
+
+## vLLM - Qwen2.5-VL-7B-Instruct
+
+This is the best!
+
+```
+vllm serve --trust-remote-code --tensor-parallel-size 2 --max-model-len 32768 --gpu-memory-utilization 0.90 --enforce-eager --host 0.0.0.0 --port 7080 Qwen/Qwen2.5-VL-7B-Instruct
+```

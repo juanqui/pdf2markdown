@@ -5,21 +5,52 @@ build-backend = "hatchling.build"
 [project]
 name = "pdf-to-markdown"
 dynamic = ["version"]
-description = "Python application that leverages LLMs to convert technical PDF documents to well-structured Markdown"
+description = "Python library and CLI tool that leverages LLMs to convert technical PDF documents to well-structured Markdown"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-keywords = ["pdf", "markdown", "llm", "ocr", "conversion"]
+keywords = [
+  "pdf",
+  "markdown",
+  "llm",
+  "ocr",
+  "conversion",
+  "document-processing",
+  "openai",
+  "gpt",
+  "vision",
+  "transformers",
+  "pdf-parser",
+  "pdf-to-text",
+  "document-conversion",
+  "ai",
+  "machine-learning"
+]
 authors = [
+  { name = "Your Name", email = "your.email@example.com" },
+]
+maintainers = [
   { name = "Your Name", email = "your.email@example.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Information Technology",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Text Processing :: Markup :: Markdown",
+  "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: Implementation :: CPython",
+  "Operating System :: OS Independent",
+  "Environment :: Console",
+  "Framework :: AsyncIO",
 ]
 dependencies = [
   "pymupdf>=1.23.0",
@@ -58,7 +89,7 @@ Source = "https://github.com/yourusername/pdf-to-markdown"
 pdf-to-markdown = "pdf_to_markdown.__main__:main"
 
 [tool.hatch.version]
-path = "src/pdf_to_markdown/__about__.py"
+path = "src/pdf_to_markdown/__init__.py"
 
 [tool.hatch.envs.default]
 dependencies = [

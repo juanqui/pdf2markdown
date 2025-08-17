@@ -124,6 +124,13 @@ class PageParserConfig(BaseModel):
     prompt_template: Path | None = Field(default=None)
     additional_instructions: str | None = None
     
+    # Table format configuration
+    table_format: str = Field(
+        default="html",
+        pattern="^(html|markdown)$",
+        description="Format for table extraction: 'html' for complex layouts, 'markdown' for simple tables"
+    )
+    
     # Content validation configuration
     validate_content: bool = Field(default=True)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)

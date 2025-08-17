@@ -122,6 +122,13 @@ page_parser:
   # Currently only "simple_llm" is available
   type: simple_llm
   
+  # Table format configuration
+  # "html" - Use HTML <table> tags for complex table layouts (default, recommended)
+  #          Preserves merged cells, nested tables, complex alignments
+  # "markdown" - Use Markdown pipe syntax for simple tables
+  #              Better for simple tables, may lose complex formatting
+  table_format: html
+  
   # Path to custom prompt template (Jinja2 format)
   # Leave as null to use the default template
   # Path can be absolute or relative to working directory

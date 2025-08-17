@@ -5,7 +5,7 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 ## Features
 
 - 🚀 **High-Quality Conversion**: Uses state-of-the-art LLMs for accurate text extraction
-- 📊 **Table Preservation**: Converts tables to clean Markdown format
+- 📊 **Table Preservation**: Converts tables to HTML or Markdown format (configurable)
 - 🔢 **Equation Support**: Preserves mathematical equations in LaTeX format
 - 🖼️ **Image Handling**: Describes images and preserves captions
 - ⚡ **Parallel Processing**: Processes multiple pages concurrently for speed
@@ -21,7 +21,13 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 
 ## Installation
 
-### Using Hatch (Recommended)
+### From PyPI (Coming Soon)
+
+```bash
+pip install pdf-to-markdown
+```
+
+### Using Hatch (Development)
 
 ```bash
 # Install Hatch
@@ -74,7 +80,298 @@ export OPENAI_API_KEY="your-api-key-here"
 pdf-to-markdown input.pdf -o output.md
 ```
 
-## Usage
+## Library Usage
+
+`pdf-to-markdown` can be used as a Python library in your own applications. This is useful for integrating PDF conversion into larger systems, web applications, or data processing pipelines.
+
+### Simple Usage
+
+```python
+from pdf_to_markdown import PDFConverter
+
+# Create converter with default settings
+converter = PDFConverter()
+
+# Convert a PDF to markdown
+markdown_text = converter.convert_sync("document.pdf")
+print(markdown_text)
+
+# Save to a file
+markdown_text = converter.convert_sync("document.pdf", "output.md")
+```
+
+### Configuration Options
+
+```python
+from pdf_to_markdown import PDFConverter, ConfigBuilder
+
+# Build configuration programmatically
+config = ConfigBuilder() \
+    .with_openai(api_key="your-api-key", model="gpt-4o") \
+    .with_resolution(400) \
+    .with_page_workers(20) \
+    .with_cache_dir("/tmp/my_cache") \
+    .build()
+
+converter = PDFConverter(config=config)
+markdown = converter.convert_sync("document.pdf")
+```
+
+### Table Format Configuration
+
+```python
+from pdf_to_markdown import ConfigBuilder, PDFConverter
+
+# Configure for HTML tables (better for complex layouts)
+config = ConfigBuilder() \
+    .with_openai(api_key="your-api-key") \
+    .build()
+
+# Set table format in the configuration
+config['page_parser']['table_format'] = 'html'  # Default
+
+converter = PDFConverter(config=config)
+
+# Or configure for Markdown tables (simpler format)
+config['page_parser']['table_format'] = 'markdown'
+```
+
+### Using Different LLM Providers
+
+```python
+from pdf_to_markdown import ConfigBuilder, PDFConverter
+
+# OpenAI (or compatible endpoints)
+config = ConfigBuilder() \
+    .with_openai(
+        api_key="your-key",
+        model="gpt-4o-mini",
+        endpoint="https://api.openai.com/v1"  # or your custom endpoint
+    ) \
+    .build()
+
+# Local models with Transformers
+config = ConfigBuilder() \
+    .with_transformers(
+        model_name="microsoft/Phi-3.5-vision-instruct",
+        device="cuda",  # or "cpu"
+        torch_dtype="float16"
+    ) \
+    .build()
+
+converter = PDFConverter(config=config)
+```
+
+### Async Usage
+
+```python
+import asyncio
+from pdf_to_markdown import PDFConverter
+
+async def convert_pdf():
+    converter = PDFConverter()
+    
+    # Async conversion
+    markdown = await converter.convert("document.pdf")
+    
+    # With progress callback
+    async def progress(current, total, message):
+        print(f"Progress: {current}/{total} - {message}")
+    
+    markdown = await converter.convert(
+        "document.pdf",
+        progress_callback=progress
+    )
+    
+    return markdown
+
+# Run async function
+markdown = asyncio.run(convert_pdf())
+```
+
+### Streaming Pages
+
+Process large documents page by page as they complete:
+
+```python
+import asyncio
+from pdf_to_markdown import PDFConverter
+
+async def stream_conversion():
+    converter = PDFConverter()
+    
+    async for page in converter.stream_pages("large_document.pdf"):
+        print(f"Page {page.page_number}: {len(page.content)} characters")
+        # Process each page as it completes
+        # e.g., save to database, send to queue, etc.
+
+asyncio.run(stream_conversion())
+```
+
+### Batch Processing
+
+Convert multiple PDFs efficiently:
+
+```python
+import asyncio
+from pdf_to_markdown import PDFConverter
+
+async def batch_convert():
+    converter = PDFConverter()
+    
+    pdf_files = ["doc1.pdf", "doc2.pdf", "doc3.pdf"]
+    results = await converter.process_batch(
+        pdf_files,
+        output_dir="./output"
+    )
+    
+    for result in results:
+        if result.status == ConversionStatus.COMPLETED:
+            print(f"✓ {result.source_path}")
+        else:
+            print(f"✗ {result.source_path}: {result.error_message}")
+
+asyncio.run(batch_convert())
+```
+
+### Loading Configuration from Files
+
+```python
+from pdf_to_markdown import PDFConverter, Config
+
+# From YAML file
+config = Config.from_yaml("config.yaml")
+converter = PDFConverter(config=config)
+
+# From dictionary
+config_dict = {
+    "llm_provider": {
+        "provider_type": "openai",
+        "api_key": "your-key",
+        "model": "gpt-4o-mini"
+    },
+    "pipeline": {
+        "page_workers": 15
+    }
+}
+converter = PDFConverter(config=config_dict)
+```
+
+### Error Handling
+
+```python
+from pdf_to_markdown import (
+    PDFConverter,
+    PDFConversionError,
+    ConfigurationError,
+    ParsingError
+)
+
+try:
+    converter = PDFConverter()
+    markdown = converter.convert_sync("document.pdf")
+except ConfigurationError as e:
+    print(f"Configuration error: {e}")
+except ParsingError as e:
+    print(f"Failed to parse PDF: {e}")
+    if e.page_number:
+        print(f"Error on page {e.page_number}")
+except PDFConversionError as e:
+    print(f"Conversion failed: {e}")
+```
+
+### Context Manager
+
+Properly clean up resources using context managers:
+
+```python
+import asyncio
+from pdf_to_markdown import PDFConverter
+
+async def convert_with_cleanup():
+    async with PDFConverter() as converter:
+        markdown = await converter.convert("document.pdf")
+        # Converter automatically cleaned up after this block
+    return markdown
+
+markdown = asyncio.run(convert_with_cleanup())
+```
+
+### Integration Examples
+
+#### Flask Web Application
+
+```python
+from flask import Flask, request, jsonify
+from pdf_to_markdown import PDFConverter
+
+app = Flask(__name__)
+converter = PDFConverter()
+
+@app.route('/convert', methods=['POST'])
+def convert_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    file.save('/tmp/upload.pdf')
+    
+    try:
+        markdown = converter.convert_sync('/tmp/upload.pdf')
+        return jsonify({'markdown': markdown})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+```
+
+#### Celery Task Queue
+
+```python
+from celery import Celery
+from pdf_to_markdown import PDFConverter
+
+app = Celery('tasks', broker='redis://localhost:6379')
+converter = PDFConverter()
+
+@app.task
+def convert_pdf_task(pdf_path):
+    """Background task to convert PDF"""
+    return converter.convert_sync(pdf_path)
+```
+
+#### Document Processing Pipeline
+
+```python
+from pdf_to_markdown import PDFConverter, ConfigBuilder
+import sqlite3
+
+# Configure for high-quality conversion
+config = ConfigBuilder() \
+    .with_openai(api_key="your-key", model="gpt-4o") \
+    .with_resolution(400) \
+    .with_validators(['markdown', 'repetition']) \
+    .build()
+
+converter = PDFConverter(config=config)
+
+def process_document(pdf_path, doc_id):
+    """Process document and store in database"""
+    # Convert PDF
+    markdown = converter.convert_sync(pdf_path)
+    
+    # Store in database
+    conn = sqlite3.connect('documents.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO documents (id, content) VALUES (?, ?)",
+        (doc_id, markdown)
+    )
+    conn.commit()
+    conn.close()
+    
+    return doc_id
+```
+
+## CLI Usage
 
 ### Basic Usage
 
@@ -106,6 +403,10 @@ pdf-to-markdown document.pdf --no-progress
 
 # Save configuration for reuse
 pdf-to-markdown document.pdf --save-config my-settings.yaml
+
+# Specify table format (html or markdown)
+pdf-to-markdown document.pdf --table-format html  # For complex tables
+pdf-to-markdown document.pdf --table-format markdown  # For simple tables
 ```
 
 ### Configuration
@@ -165,6 +466,9 @@ page_parser:
   type: simple_llm  # Parser type
   prompt_template: null  # Optional custom prompt template path
   additional_instructions: null  # Optional additional LLM instructions
+  
+  # Table format configuration
+  table_format: html  # 'html' for complex layouts, 'markdown' for simple tables
   
   # Content validation pipeline configuration
   validate_content: true  # Enable content validation
@@ -369,13 +673,78 @@ The application uses a modular architecture with these key components:
 
 The converter preserves:
 - **Headers**: Converted to appropriate Markdown heading levels
-- **Tables**: Rendered as clean Markdown tables with pipe syntax
+- **Tables**: Rendered as HTML tables or Markdown tables (configurable)
 - **Lists**: Both ordered and unordered lists
 - **Equations**: LaTeX format for mathematical expressions ($inline$ and $$display$$)
 - **Images**: Descriptions or captions preserved
 - **Formatting**: Bold, italic, code, and other text styling
 - **Technical Elements**: Pin diagrams, electrical characteristics, timing specifications
 - **Special Notations**: Notes, warnings, footnotes, and cross-references
+
+### Table Format Options
+
+The converter supports two table formats, configurable via the `table_format` setting:
+
+#### HTML Tables (Default)
+HTML tables are recommended for complex layouts with:
+- Merged cells (colspan/rowspan)
+- Nested tables
+- Complex alignments
+- Multi-line cell content
+
+Example configuration:
+```yaml
+page_parser:
+  table_format: html  # Default setting
+```
+
+Output example:
+```html
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Parameter</th>
+      <th colspan="3">Conditions</th>
+      <th>Unit</th>
+    </tr>
+    <tr>
+      <th>Min</th>
+      <th>Typ</th>
+      <th>Max</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Operating Voltage</td>
+      <td>1.7</td>
+      <td>3.3</td>
+      <td>3.6</td>
+      <td>V</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+#### Markdown Tables
+Markdown tables are simpler and more readable in plain text, best for:
+- Simple tabular data
+- Tables without merged cells
+- Basic alignment needs
+
+Example configuration:
+```yaml
+page_parser:
+  table_format: markdown
+```
+
+Output example:
+```markdown
+| Parameter | Min | Typ | Max | Unit |
+|-----------|----:|----:|----:|------|
+| Voltage   | 1.7 | 3.3 | 3.6 | V    |
+| Current   | 0.1 | 0.5 | 1.0 | mA   |
+```
 
 ### Output Quality
 
