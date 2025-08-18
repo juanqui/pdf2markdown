@@ -33,6 +33,7 @@ class SimpleDocumentParser(DocumentParser):
         Args:
             config: Configuration dictionary with the following keys:
                 - resolution (int): DPI for rendering pages (default: 300)
+                - max_dimension (int): Optional maximum pixels for longest side
                 - cache_dir (Path): Directory for caching images
                 - max_page_size (int): Maximum page size in bytes
                 - timeout (int): Timeout in seconds for page rendering
@@ -40,7 +41,10 @@ class SimpleDocumentParser(DocumentParser):
         """
         super().__init__(config)
         self.resolution = config.get("resolution", 300)
-        self.cache_dir = Path(config.get("cache_dir", tempfile.gettempdir()) / "pdf2markdown_cache")
+        self.max_dimension = config.get("max_dimension", None)
+        self.cache_dir = Path(
+            config.get("cache_dir", Path(tempfile.gettempdir()) / "pdf2markdown_cache")
+        )
         self.max_page_size = config.get("max_page_size", 50_000_000)  # 50MB
         self.timeout = config.get("timeout", 30)
         self.page_limit = config.get("page_limit", None)
@@ -48,7 +52,8 @@ class SimpleDocumentParser(DocumentParser):
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(
-            f"Initialized SimpleDocumentParser with resolution={self.resolution}, cache_dir={self.cache_dir}"
+            f"Initialized SimpleDocumentParser with resolution={self.resolution}, "
+            f"max_dimension={self.max_dimension}, cache_dir={self.cache_dir}"
         )
 
     def validate_document(self, document_path: Path) -> bool:
@@ -156,6 +161,32 @@ class SimpleDocumentParser(DocumentParser):
                 mat = pymupdf.Matrix(self.resolution / 72.0, self.resolution / 72.0)
                 pix = pdf_page.get_pixmap(matrix=mat, alpha=False)
 
+                # Apply max_dimension resizing if specified
+                if self.max_dimension:
+                    # Get current dimensions
+                    current_width = pix.width
+                    current_height = pix.height
+                    max_current = max(current_width, current_height)
+
+                    # Check if resizing is needed
+                    if max_current > self.max_dimension:
+                        # Calculate scaling factor
+                        scale_factor = self.max_dimension / max_current
+                        new_width = int(current_width * scale_factor)
+                        new_height = int(current_height * scale_factor)
+
+                        # Create scaled pixmap using PyMuPDF's scaling constructor
+                        # Pixmap(src, width, height) - creates a scaled copy
+                        scaled_pix = pymupdf.Pixmap(pix, new_width, new_height)
+
+                        logger.debug(
+                            f"Resized page {page_num + 1} from {current_width}x{current_height} "
+                            f"to {new_width}x{new_height} (max_dimension={self.max_dimension})"
+                        )
+
+                        # Replace original pixmap with scaled one
+                        pix = scaled_pix
+
                 # Save image to cache
                 image_path = doc_cache_dir / f"page_{page_num + 1:04d}.png"
                 pix.save(str(image_path))
@@ -247,6 +278,32 @@ class SimpleDocumentParser(DocumentParser):
             # Render page to image
             mat = pymupdf.Matrix(self.resolution / 72.0, self.resolution / 72.0)
             pix = pdf_page.get_pixmap(matrix=mat, alpha=False)
+
+            # Apply max_dimension resizing if specified
+            if self.max_dimension:
+                # Get current dimensions
+                current_width = pix.width
+                current_height = pix.height
+                max_current = max(current_width, current_height)
+
+                # Check if resizing is needed
+                if max_current > self.max_dimension:
+                    # Calculate scaling factor
+                    scale_factor = self.max_dimension / max_current
+                    new_width = int(current_width * scale_factor)
+                    new_height = int(current_height * scale_factor)
+
+                    # Create scaled pixmap using PyMuPDF's scaling constructor
+                    # Pixmap(src, width, height) - creates a scaled copy
+                    scaled_pix = pymupdf.Pixmap(pix, new_width, new_height)
+
+                    logger.debug(
+                        f"Resized page {page_number} from {current_width}x{current_height} "
+                        f"to {new_width}x{new_height} (max_dimension={self.max_dimension})"
+                    )
+
+                    # Replace original pixmap with scaled one
+                    pix = scaled_pix
 
             # Save image to cache
             doc_id = str(uuid.uuid4())

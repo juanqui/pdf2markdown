@@ -18,6 +18,8 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 - 🎯 **Pure Output**: Generates only document content without additional commentary
 - 🧹 **Smart Cleaning**: Automatically removes markdown code fences that LLMs sometimes add
 - 📄 **Configurable Page Separators**: Customize how pages are separated in the output
+- 📁 **Batch Processing**: Process multiple files and directories with optional output organization
+- 🔄 **Flexible I/O**: Optional output paths with smart defaults (same name, .md extension)
 
 ## Installation
 
@@ -77,6 +79,10 @@ export OPENAI_API_KEY="your-api-key-here"
 
 3. **Convert a PDF:**
 ```bash
+# Output defaults to input filename with .md extension
+pdf2markdown input.pdf
+
+# Or specify a custom output file
 pdf2markdown input.pdf -o output.md
 ```
 
@@ -376,8 +382,8 @@ def process_document(pdf_path, doc_id):
 ### Basic Usage
 
 ```bash
-# Convert with default settings
-pdf2markdown document.pdf
+# Convert single file (output defaults to same name with .md extension)
+pdf2markdown document.pdf                    # Creates document.md
 
 # Specify output file
 pdf2markdown document.pdf -o converted.md
@@ -387,6 +393,31 @@ pdf2markdown document.pdf --model gpt-4o
 
 # Adjust rendering resolution
 pdf2markdown document.pdf --resolution 400
+
+# Limit maximum image dimension
+pdf2markdown document.pdf --max-dimension 2048
+```
+
+### Multiple Files and Directories
+
+```bash
+# Convert multiple files (each creates its own .md file)
+pdf2markdown file1.pdf file2.pdf file3.pdf
+
+# Convert all PDFs in a directory
+pdf2markdown /path/to/pdfs/
+
+# Convert multiple files to a specific output directory
+pdf2markdown *.pdf -o /output/directory/
+
+# Convert directory to another directory
+pdf2markdown /input/docs/ -o /output/docs/
+
+# Mix files and directories
+pdf2markdown doc1.pdf /more/docs/ doc2.pdf
+
+# Concatenate multiple files into single output
+pdf2markdown file1.pdf file2.pdf -o combined.md
 ```
 
 ### Advanced Usage
@@ -457,6 +488,7 @@ llm_provider:
 document_parser:
   type: simple  # Parser type
   resolution: 300  # DPI for rendering PDF pages to images
+  max_dimension: null  # Optional: maximum pixels for longest side of rendered image
   cache_dir: /tmp/pdf2markdown/cache  # Cache directory for rendered images
   max_page_size: 50000000  # Maximum page size in bytes (50MB)
   timeout: 30  # Timeout for rendering operations
@@ -492,6 +524,7 @@ page_parser:
       # MD033 (Inline HTML) - common in technical documents and tables
       # MD026 (Trailing punctuation in headings) - common in PDF headings
       # MD042 (No empty links) - LLMs may generate placeholder links during extraction
+      # MD036 (Emphasis used instead of heading) - LLMs may use bold/italic for headings
       # MD041, MD022, MD031, MD032, MD025, MD024, MD013, MD047, MD040
     
     # Repetition validator - detects and corrects unwanted repetition
@@ -840,6 +873,7 @@ pipeline:
 
 document_parser:
   resolution: 400  # Higher quality images
+  # max_dimension: 3000  # Optional: limit max dimension if memory is a concern
 ```
 
 ## Troubleshooting
@@ -864,6 +898,9 @@ pdf2markdown large.pdf --page-workers 5
 
 # Lower resolution
 pdf2markdown large.pdf --resolution 200
+
+# Limit maximum image dimension (pixels)
+pdf2markdown large.pdf --max-dimension 1536
 ```
 
 ### Debugging

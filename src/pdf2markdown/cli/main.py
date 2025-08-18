@@ -18,8 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
-@click.option("-o", "--output", type=click.Path(path_type=Path), help="Output markdown file path")
+@click.argument("inputs", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(path_type=Path),
+    help="Output file/directory path (optional, defaults to same path with .md extension)",
+)
 @click.option(
     "-c", "--config", type=click.Path(exists=True, path_type=Path), help="Configuration file path"
 )
@@ -34,6 +39,12 @@ logger = logging.getLogger(__name__)
     type=int,
     default=None,
     help="DPI resolution for rendering PDF pages (overrides config file)",
+)
+@click.option(
+    "--max-dimension",
+    type=int,
+    default=None,
+    help="Maximum pixels for longest side of rendered images (overrides config file)",
 )
 @click.option(
     "--page-workers",
@@ -59,12 +70,13 @@ logger = logging.getLogger(__name__)
 )
 @click.version_option(version=__version__)
 def main(
-    input_file: Path,
+    inputs: tuple[Path, ...],
     output: Path | None,
     config: Path | None,
     api_key: str | None,
     model: str | None,
     resolution: int | None,
+    max_dimension: int | None,
     page_workers: int | None,
     no_progress: bool,
     log_level: str,
@@ -77,8 +89,17 @@ def main(
     This tool processes PDF files by rendering each page as an image
     and using an LLM to extract and format the content as Markdown.
 
-    Example:
-        pdf2markdown input.pdf -o output.md
+    Supports multiple inputs:
+    - Single file: pdf2markdown input.pdf
+    - Multiple files: pdf2markdown file1.pdf file2.pdf file3.pdf
+    - Directory: pdf2markdown /path/to/pdfs/ (processes all PDFs in directory)
+    - Mixed: pdf2markdown file1.pdf /path/to/pdfs/ file2.pdf
+
+    Examples:
+        pdf2markdown input.pdf                    # Output: input.md
+        pdf2markdown input.pdf -o output.md       # Output: output.md
+        pdf2markdown *.pdf                        # Process all PDFs in current dir
+        pdf2markdown /docs/ -o /output/            # Process dir, output to dir
     """
     # Setup logging
     setup_logging(level=log_level)
@@ -121,6 +142,12 @@ def main(
         if resolution is not None:
             builder.with_resolution(resolution)
 
+        if max_dimension is not None:
+            current_config = builder._config
+            if "document_parser" not in current_config:
+                current_config["document_parser"] = {}
+            current_config["document_parser"]["max_dimension"] = max_dimension
+
         if page_workers is not None:
             builder.with_page_workers(page_workers)
 
@@ -138,12 +165,6 @@ def main(
         # Build final configuration
         final_config = builder.build()
 
-        # Set output path
-        if output:
-            output_path = output
-        else:
-            output_path = input_file.with_suffix(".md")
-
         # Save configuration if requested
         if save_config:
             import yaml
@@ -154,10 +175,61 @@ def main(
             console.print(f"[green]Configuration saved to {save_config}[/green]")
             return
 
+        # Collect all PDF files to process
+        pdf_files = []
+        for input_path in inputs:
+            if input_path.is_file():
+                if input_path.suffix.lower() == ".pdf":
+                    pdf_files.append(input_path)
+                else:
+                    console.print(f"[yellow]Warning: Skipping non-PDF file: {input_path}[/yellow]")
+            elif input_path.is_dir():
+                # Find all PDF files in directory
+                dir_pdfs = list(input_path.glob("*.pdf")) + list(input_path.glob("*.PDF"))
+                if dir_pdfs:
+                    pdf_files.extend(sorted(dir_pdfs))
+                    console.print(f"[cyan]Found {len(dir_pdfs)} PDF files in {input_path}[/cyan]")
+                else:
+                    console.print(
+                        f"[yellow]Warning: No PDF files found in directory: {input_path}[/yellow]"
+                    )
+            else:
+                console.print(f"[red]Error: Path does not exist: {input_path}[/red]")
+                sys.exit(1)
+
+        if not pdf_files:
+            console.print("[red]Error: No PDF files found to process[/red]")
+            sys.exit(1)
+
+        # Determine output strategy
+        multiple_inputs = len(pdf_files) > 1
+        output_is_dir = output and output.is_dir()
+
+        if multiple_inputs and output and not output_is_dir and not output.parent.exists():
+            # Check if output looks like a directory (ends with /)
+            if str(output).endswith("/") or str(output).endswith("\\"):
+                output_is_dir = True
+                output.mkdir(parents=True, exist_ok=True)
+
         # Display configuration
         console.print(f"[bold blue]PDF to Markdown Converter v{__version__}[/bold blue]")
-        console.print(f"Input: {input_file}")
-        console.print(f"Output: {output_path}")
+        if multiple_inputs:
+            console.print(f"Inputs: {len(pdf_files)} PDF files")
+            if output_is_dir or not output:
+                console.print(
+                    f"Output: Individual .md files {'in ' + str(output) if output else 'next to source files'}"
+                )
+            else:
+                console.print(
+                    "[yellow]Warning: Multiple inputs with single output file - will concatenate results[/yellow]"
+                )
+                console.print(f"Output: {output}")
+        else:
+            console.print(f"Input: {pdf_files[0]}")
+            if output:
+                console.print(f"Output: {output}")
+            else:
+                console.print(f"Output: {pdf_files[0].with_suffix('.md')}")
 
         # Get model from configuration
         llm_config = final_config.llm_provider
@@ -169,6 +241,9 @@ def main(
         doc_config = final_config.document_parser
         resolution_val = doc_config.get("resolution", 300) if doc_config else 300
         console.print(f"Resolution: {resolution_val} DPI")
+
+        if doc_config and doc_config.get("max_dimension"):
+            console.print(f"Max Dimension: {doc_config.get('max_dimension')} pixels")
 
         pipeline_config = final_config.pipeline
         workers = pipeline_config.get("page_workers", 10) if pipeline_config else 10
@@ -199,16 +274,86 @@ def main(
                 "[yellow]Note: Page limit is not yet implemented in library mode[/yellow]"
             )
 
-        # Run synchronously for CLI
-        converter.convert_sync(input_file, output_path, progress_callback=progress_callback)
+        # Process files
+        successful_conversions = []
+        failed_conversions = []
 
-        console.print("\n[green]✓ Conversion complete![/green]")
-        console.print(f"Output saved to: {output_path}")
+        for i, pdf_file in enumerate(pdf_files, 1):
+            try:
+                # Determine output path for this file
+                if multiple_inputs:
+                    if output_is_dir:
+                        # Output to specified directory
+                        output_path = output / pdf_file.with_suffix(".md").name
+                    elif output:
+                        # Single output file (concatenate mode)
+                        output_path = output
+                    else:
+                        # Default: next to source file
+                        output_path = pdf_file.with_suffix(".md")
+                else:
+                    # Single input
+                    if output:
+                        output_path = output
+                    else:
+                        output_path = pdf_file.with_suffix(".md")
+
+                # Ensure output directory exists
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                if multiple_inputs:
+                    console.print(
+                        f"\n[bold cyan]Processing {i}/{len(pdf_files)}: {pdf_file.name}[/bold cyan]"
+                    )
+
+                # Run conversion
+                if multiple_inputs and output and not output_is_dir and i > 1:
+                    # Append mode for concatenation
+                    result = converter.convert_sync(pdf_file, progress_callback=progress_callback)
+                    with open(output_path, "a", encoding="utf-8") as f:
+                        f.write(f"\n\n<!-- Source: {pdf_file.name} -->\n\n")
+                        f.write(result)
+                else:
+                    # Normal conversion
+                    converter.convert_sync(
+                        pdf_file, output_path, progress_callback=progress_callback
+                    )
+
+                successful_conversions.append((pdf_file, output_path))
+
+            except Exception as e:
+                failed_conversions.append((pdf_file, str(e)))
+                console.print(f"[red]✗ Failed to convert {pdf_file.name}: {e}[/red]")
+                if not multiple_inputs:
+                    # For single file, re-raise the error
+                    raise
+
+        # Report results
+        if successful_conversions:
+            console.print(
+                f"\n[green]✓ Successfully converted {len(successful_conversions)} file(s)![/green]"
+            )
+            if not multiple_inputs or (multiple_inputs and not output_is_dir and output):
+                # Show single output or concatenated output
+                console.print(f"Output saved to: {successful_conversions[0][1]}")
+            else:
+                # Show directory of outputs
+                for pdf_file, output_path in successful_conversions:
+                    console.print(f"  {pdf_file.name} → {output_path}")
+
+        if failed_conversions:
+            console.print(f"\n[red]✗ Failed to convert {len(failed_conversions)} file(s):[/red]")
+            for pdf_file, error in failed_conversions:
+                console.print(f"  {pdf_file.name}: {error}")
 
         # Display statistics report if available
         stats = get_statistics_tracker()
         if stats:
             stats.print_report(console)
+
+        # Exit with error code if any conversions failed
+        if failed_conversions and not successful_conversions:
+            sys.exit(1)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Conversion cancelled by user[/yellow]")

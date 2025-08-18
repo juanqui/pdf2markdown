@@ -7,8 +7,6 @@ import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from ..config.schemas import AppConfig
-from ..config.settings import Settings
 from ..core.models import Document as InternalDocument
 from ..core.models import Page as InternalPage
 from ..pipeline.coordinator import PipelineCoordinator
@@ -61,15 +59,15 @@ class PDFConverter:
     async def _initialize_components(self):
         """Initialize the converter components."""
         try:
-            # Create internal settings from our config
-            settings = self._create_settings()
+            # Get the config dictionary directly
+            config_dict = self.config.to_dict()
 
-            # Create pipeline configuration
-            pipeline_config = settings.pipeline.model_dump() if settings.pipeline else {}
+            # Create pipeline configuration from our config
+            pipeline_config = config_dict.get("pipeline", {})
 
             # Add llm_provider to pipeline config
-            if settings.llm_provider:
-                pipeline_config["llm_provider"] = settings.llm_provider.model_dump()
+            if "llm_provider" in config_dict:
+                pipeline_config["llm_provider"] = config_dict["llm_provider"]
             else:
                 # Try to get from environment or use defaults
                 pipeline_config["llm_provider"] = {
@@ -79,69 +77,24 @@ class PDFConverter:
                 }
 
             # Add document_parser config
-            if settings.document_parser:
-                pipeline_config["document_parser"] = settings.document_parser.model_dump()
+            if "document_parser" in config_dict:
+                pipeline_config["document_parser"] = config_dict["document_parser"]
 
             # Add page_parser config
-            if settings.page_parser:
-                pipeline_config["page_parser"] = settings.page_parser.model_dump()
+            if "page_parser" in config_dict:
+                pipeline_config["page_parser"] = config_dict["page_parser"]
+                # Ensure page_parser uses the global llm_provider if not specified
+                if (
+                    "llm_provider" not in pipeline_config["page_parser"]
+                    and "llm_provider" in pipeline_config
+                ):
+                    pipeline_config["page_parser"]["llm_provider"] = pipeline_config["llm_provider"]
 
             # Initialize pipeline with complete config
             self._pipeline = PipelineCoordinator(pipeline_config)
 
         except Exception as e:
             raise ConfigurationError(f"Failed to initialize converter: {e}") from e
-
-    def _create_settings(self) -> Settings:
-        """Create internal Settings object from our Config."""
-        config_dict = self.config.to_dict()
-
-        # Map our config structure to internal AppConfig structure
-        app_config_dict = {}
-
-        # Copy over the configurations
-        for key in [
-            "llm_provider",
-            "document_parser",
-            "page_parser",
-            "pipeline",
-            "output_dir",
-            "temp_dir",
-            "page_separator",
-        ]:
-            if key in config_dict:
-                app_config_dict[key] = config_dict[key]
-
-        # Create AppConfig and Settings
-        try:
-            app_config = AppConfig(**app_config_dict)
-            settings = Settings(config=app_config)
-            return settings
-        except Exception:
-            # If validation fails, create minimal settings
-            from ..config.schemas import (
-                DocumentParserConfig,
-                LLMProviderConfig,
-                PageParserConfig,
-                PipelineConfig,
-            )
-
-            # Build configs piece by piece
-            settings = Settings()
-
-            if "llm_provider" in config_dict:
-                settings.llm_provider = LLMProviderConfig(**config_dict["llm_provider"])
-
-            if "document_parser" in config_dict:
-                settings.document_parser = DocumentParserConfig(**config_dict["document_parser"])
-
-            if "page_parser" in config_dict:
-                settings.page_parser = PageParserConfig(**config_dict["page_parser"])
-
-            if "pipeline" in config_dict:
-                settings.pipeline = PipelineConfig(**config_dict["pipeline"])
-
-            return settings
 
     async def convert(
         self,

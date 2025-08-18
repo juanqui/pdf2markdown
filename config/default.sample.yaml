@@ -98,6 +98,14 @@ document_parser:
   # Recommended: 200-300 for text, 300-400 for detailed diagrams
   resolution: 300
   
+  # Maximum dimension for the longest side of rendered images (in pixels)
+  # If specified, images will be resized after rendering to ensure the
+  # longest side (width or height) is exactly this many pixels
+  # This helps control memory usage and processing time for very large documents
+  # Leave unset (or set to null) to use the original rendered size
+  # Example: 2048 would resize images so the longest side is 2048 pixels
+  # max_dimension: 2048  # Optional, uncomment to enable
+  
   # Directory for caching rendered page images
   # Images are automatically cleaned up after processing
   # Use absolute paths or paths relative to working directory
@@ -191,6 +199,10 @@ page_parser:
       # - MD025: Multiple top-level headings
       # - MD024: Multiple headings with the same content
       # - MD040: Fenced code blocks should have a language specified
+      # - MD033: Inline HTML (common in technical documents and tables)
+      # - MD026: Trailing punctuation in headings (common in PDF headings)
+      # - MD042: No empty links (LLMs may generate placeholder links)
+      # - MD036: Emphasis possibly used instead of a heading element
     
     # ==== REPETITION VALIDATOR ====
     # Detects and corrects unwanted repetition in content

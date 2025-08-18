@@ -11,6 +11,12 @@ class DocumentParserConfig(BaseModel):
 
     type: str = "simple"
     resolution: int = Field(default=300, ge=72, le=600)
+    max_dimension: int | None = Field(
+        default=None,
+        ge=100,
+        le=10000,
+        description="Maximum pixels for longest side of rendered image",
+    )
     cache_dir: Path = Field(default=Path("/tmp/pdf2markdown/cache"))
     max_page_size: int = Field(default=50_000_000)  # 50MB
     timeout: int = Field(default=30)

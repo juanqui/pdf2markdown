@@ -53,6 +53,7 @@ class MarkdownValidator(BaseValidator):
             "MD033",  # Inline HTML (common in technical documents and tables)
             "MD026",  # Trailing punctuation present in heading text (common in PDF headings)
             "MD042",  # No empty links (LLMs may generate placeholder links during extraction)
+            "MD036",  # Emphasis possibly used instead of a heading element (common in PDF extraction)
         ]
 
         # Combine with user-specified disabled rules

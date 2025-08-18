@@ -59,9 +59,21 @@ class OpenAILLMProvider(LLMProvider):
             timeout=self.timeout,
         )
 
+        # Determine which penalties will be used based on endpoint
+        is_openai_official = self.endpoint.startswith("https://api.openai.com")
+        penalties_info = []
+        if is_openai_official:
+            penalties_info.append(f"presence_penalty={self.presence_penalty}")
+            penalties_info.append(f"frequency_penalty={self.frequency_penalty}")
+        else:
+            if self.repetition_penalty is not None:
+                penalties_info.append(f"repetition_penalty={self.repetition_penalty}")
+            penalties_info.append(f"presence_penalty={self.presence_penalty}")
+            penalties_info.append(f"frequency_penalty={self.frequency_penalty}")
+
         logger.debug(
             f"Initialized OpenAILLMProvider with model={self.model}, endpoint={self.endpoint}, "
-            f"presence_penalty={self.presence_penalty}, frequency_penalty={self.frequency_penalty}"
+            f"{', '.join(penalties_info)}"
         )
 
     def _encode_image(self, image_path: Path) -> str:
@@ -139,23 +151,37 @@ class OpenAILLMProvider(LLMProvider):
                 "temperature": self.temperature,
             }
 
-            # Add penalty parameters if they're non-zero
-            if self.presence_penalty != 0.0:
-                api_params["presence_penalty"] = self.presence_penalty
-            if self.frequency_penalty != 0.0:
-                api_params["frequency_penalty"] = self.frequency_penalty
+            # Add penalty parameters based on the endpoint type
+            is_openai_official = self.endpoint.startswith("https://api.openai.com")
+            logger.debug(f"Endpoint: {self.endpoint}, Is OpenAI official: {is_openai_official}")
 
-            # Some OpenAI-compatible APIs use repetition_penalty instead
-            # Only add if specified and the API doesn't already have frequency/presence penalties
-            if (
-                self.repetition_penalty is not None
-                and self.frequency_penalty == 0.0
-                and self.presence_penalty == 0.0
-            ):
-                api_params["repetition_penalty"] = self.repetition_penalty
+            if is_openai_official:
+                # Official OpenAI API only supports frequency and presence penalties
+                if self.presence_penalty != 0.0:
+                    api_params["presence_penalty"] = self.presence_penalty
+                if self.frequency_penalty != 0.0:
+                    api_params["frequency_penalty"] = self.frequency_penalty
+                # Never send repetition_penalty to official OpenAI API
+            else:
+                # For OpenAI-compatible APIs (local servers, vLLM, Ollama, etc.)
+                # The OpenAI Python SDK doesn't recognize repetition_penalty as a valid parameter
+                # So we need to pass it via extra_body for servers that support it
+                if self.repetition_penalty is not None:
+                    # Pass repetition_penalty via extra_body to bypass SDK validation
+                    api_params["extra_body"] = {"repetition_penalty": self.repetition_penalty}
+
+                # Always include OpenAI-style penalties if set (these are SDK-recognized)
+                if self.presence_penalty != 0.0:
+                    api_params["presence_penalty"] = self.presence_penalty
+                if self.frequency_penalty != 0.0:
+                    api_params["frequency_penalty"] = self.frequency_penalty
 
             # Update with any additional kwargs
             api_params.update(kwargs)
+
+            # Debug log the parameters being sent
+            params_for_log = {k: v for k, v in api_params.items() if k != "messages"}
+            logger.debug(f"API parameters (excluding messages): {params_for_log}")
 
             # Call the API
             response = await self.client.chat.completions.create(**api_params)
