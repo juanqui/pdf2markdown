@@ -23,7 +23,7 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 
 ## Installation
 
-### From PyPI (Coming Soon)
+### From PyPI
 
 ```bash
 pip install pdf2markdown
