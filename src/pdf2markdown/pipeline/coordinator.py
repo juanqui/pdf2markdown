@@ -44,12 +44,12 @@ class PipelineCoordinator(Pipeline):
         # Initialize progress tracker
         self.progress = ProgressTracker(enable=config.get("enable_progress", True))
 
-        # Initialize parsers
+        # Initialize parsers with full config for caching
         doc_parser_config = config.get("document_parser", {})
         # Pass page_limit to document parser if set
         if "page_limit" in config:
             doc_parser_config["page_limit"] = config["page_limit"]
-        self.document_parser = SimpleDocumentParser(doc_parser_config)
+        self.document_parser = SimpleDocumentParser(doc_parser_config, full_config=config)
 
         # Initialize page parser with LLM provider
         page_parser_config = config.get("page_parser", {})
@@ -62,7 +62,12 @@ class PipelineCoordinator(Pipeline):
             else:
                 # Assume it's already a config object
                 llm_provider = create_llm_provider(llm_provider_config.model_dump())
-            self.page_parser = SimpleLLMPageParser(page_parser_config, llm_provider)
+            self.page_parser = SimpleLLMPageParser(
+                page_parser_config, llm_provider, full_config=config
+            )
+
+            # Set cache manager for page parser
+            self.page_parser.set_cache_manager(self.document_parser.cache_manager)
         else:
             # No provider configured - this will fail in SimpleLLMPageParser
             raise ValueError("LLM provider configuration is required")
@@ -147,7 +152,7 @@ class PipelineCoordinator(Pipeline):
                     break
 
             # Check if all pages are complete
-            if all(p.is_processed() for p in document.pages):
+            if document.pages and all(p.is_processed() for p in document.pages):
                 document.mark_complete()
                 self.completed_documents[doc_id] = document
                 del self.active_documents[doc_id]

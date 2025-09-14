@@ -6,6 +6,28 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class CacheConfig(BaseModel):
+    """Configuration for caching system."""
+
+    enabled: bool = Field(default=True, description="Enable caching system")
+    base_dir: Path = Field(
+        default=Path("/tmp/pdf2markdown/cache"), description="Base cache directory"
+    )
+    max_size_gb: int = Field(default=10, ge=1, description="Maximum cache size in GB")
+    cleanup_after_days: int = Field(
+        default=7, ge=1, description="Clean up caches older than this many days"
+    )
+    resume_by_default: bool = Field(default=False, description="Resume processing by default")
+
+    @field_validator("base_dir", mode="before")
+    @classmethod
+    def validate_cache_dir(cls, v):
+        """Ensure base_dir is a Path object."""
+        if isinstance(v, str):
+            return Path(v)
+        return v
+
+
 class DocumentParserConfig(BaseModel):
     """Configuration for document parser."""
 
@@ -20,6 +42,7 @@ class DocumentParserConfig(BaseModel):
     cache_dir: Path = Field(default=Path("/tmp/pdf2markdown/cache"))
     max_page_size: int = Field(default=50_000_000)  # 50MB
     timeout: int = Field(default=30)
+    use_cache: bool = Field(default=True, description="Use caching for rendered images")
 
     @field_validator("cache_dir", mode="before")
     @classmethod
@@ -146,6 +169,9 @@ class PageParserConfig(BaseModel):
     validate_content: bool = Field(default=True)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
 
+    # Caching configuration
+    use_cache: bool = Field(default=True, description="Use caching for LLM-generated markdown")
+
     # Legacy validation fields (for backward compatibility)
     validate_markdown: bool | None = Field(default=None)
     markdown_validator: MarkdownValidatorConfig | None = Field(default=None)
@@ -259,6 +285,7 @@ class AppConfig(BaseModel):
     document_parser: DocumentParserConfig = Field(default_factory=DocumentParserConfig)
     page_parser: PageParserConfig = Field(default_factory=PageParserConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
     output_dir: Path = Field(default=Path("./output"))
     temp_dir: Path = Field(default=Path("/tmp/pdf2markdown"))
     page_separator: str = Field(default="\n\n--[PAGE: {page_number}]--\n\n")

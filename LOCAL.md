@@ -53,3 +53,34 @@ This is the best!
 ```
 vllm serve --trust-remote-code --tensor-parallel-size 2 --max-model-len 32768 --gpu-memory-utilization 0.90 --enforce-eager --host 0.0.0.0 --port 7080 Qwen/Qwen2.5-VL-7B-Instruct
 ```
+
+## vLLM - olmOCR-7B-0825
+
+Pretty decent. Better than `Qwen2.5-VL-7B-Instruct`
+
+```
+vllm serve --trust-remote-code --tensor-parallel-size 2 --max-model-len 32768 --gpu-memory-utilization 0.90 --enforce-eager --host 0.0.0.0 --port 7080 allenai/olmOCR-7B-0825
+```
+
+```
+docker run --runtime nvidia --gpus all \
+    -v ~/.cache/huggingface:/root/.cache/huggingface \
+    -v ~/AI:/root/AI \
+    -p 3001:3001 \
+    --ipc=host \
+    vllm/vllm-openai:latest \
+    --model allenai/olmOCR-7B-0825 \
+    --trust-remote-code \
+    --tensor-parallel-size 2 \
+    --max-model-len 32768 \
+    --gpu-memory-utilization 0.90 \
+    --enforce-eager \
+    --host 0.0.0.0 \
+    --port 3001
+```
+
+## vLLM - dots.ocr
+
+```
+vllm serve --trust-remote-code --tensor-parallel-size 2 --max-model-len 32768 --gpu-memory-utilization 0.90 --enforce-eager --chat-template-content-format string --host 0.0.0.0 --port 7080 rednote-hilab/dots.ocr
+```
