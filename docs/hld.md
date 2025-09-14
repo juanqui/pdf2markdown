@@ -2,7 +2,13 @@
 
 ## Summary
 
-`pdf2markdown` is a Python library and command-line application that leverages LLMs to accurately convert technical PDF documents, such as semiconductor datasheets, to well structured Markdown documents. The project provides both a high-level Python API for programmatic use and a CLI interface for command-line operations.
+`pdf2markdown` is a Python library and command-line application that leverages Large Language Models (LLMs) to accurately convert technical PDF documents, such as semiconductor datasheets, to well structured Markdown documents. The project provides both a high-level Python API for programmatic use and a CLI interface for command-line operations.
+
+Key architectural features include:
+- **Smart Caching System**: Deterministic caching of both rendered images and LLM-generated markdown for fast resume functionality
+- **Multiple Input Support**: Process single files, multiple files, directories, or mixed inputs with flexible output options
+- **Batch Processing**: Efficient processing of multiple documents with shared worker pools
+- **Validation Pipeline**: Extensible validation system with markdown syntax validation and repetition detection
 
 ## Requirements
 
@@ -50,10 +56,28 @@
 * Provides clear progress logging.
 
 ### Validation Requirements
-* Implements `MarkdownValidator` using PyMarkdown (pymarkdownlnt) for validation.
-    * Validates generated markdown for syntax correctness.
-    * Can optionally attempt to correct issues by re-prompting the LLM with validation errors.
-    * Configurable rules with sensible defaults for LLM-generated content (ignores overly strict rules like MD013 line length, MD047 trailing newline, MD033 inline HTML, MD026 trailing punctuation in headings, and MD042 empty links).
+* Implements comprehensive validation pipeline with multiple validators:
+    * **MarkdownValidator**: Uses PyMarkdown (pymarkdownlnt) for syntax validation with configurable rules and LLM-based correction
+    * **RepetitionValidator**: Detects and corrects various types of content repetition (consecutive lines, paragraph patterns, character repetition)
+    * Extensible framework allowing easy addition of custom validators
+    * Smart correction system that re-prompts LLM with detailed validation errors
+
+### Caching and Resume Requirements
+* **Smart Caching System**: Deterministic caching based on file content and configuration hashes
+    * **Image Cache**: Caches rendered PDF page images with automatic invalidation when rendering settings change
+    * **Markdown Cache**: Caches LLM-generated content with automatic invalidation when LLM configuration changes
+    * **Resume Functionality**: Interrupted processing can be resumed using cached data, dramatically reducing time and costs
+    * **Cache Management**: Automatic cleanup, statistics reporting, and manual cache clearing
+
+### Multiple Input Processing Requirements
+* **Flexible Input Handling**: Support for various input patterns
+    * Single files, multiple files, directories, or mixed combinations
+    * Automatic PDF discovery in directories with recursive search
+    * Smart output path resolution with configurable separators and concatenation
+* **Batch Processing**: Efficient processing of multiple documents
+    * Shared worker pools across multiple documents
+    * Global pipeline manager for optimal resource utilization
+    * Progress tracking and error reporting for batch operations
 
 ## Reference - Simplified Prompt
 

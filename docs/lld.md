@@ -88,6 +88,7 @@ pdf2markdown/
 │       │   ├── queue_manager.py    # Queue management
 │       │   ├── worker.py            # Worker implementation
 │       │   ├── coordinator.py       # Pipeline coordinator
+│       │   ├── global_manager.py    # Global pipeline manager for batch processing
 │       │   └── progress.py          # Progress tracking and logging
 │       ├── config/
 │       │   ├── __init__.py
@@ -96,11 +97,18 @@ pdf2markdown/
 │       ├── templates/
 │       │   └── prompts/
 │       │       └── ocr_extraction.j2 # Jinja2 template for LLM prompt
-│       └── utils/
+│       ├── utils/
+│       │   ├── __init__.py
+│       │   ├── cache_manager.py     # Comprehensive cache management system
+│       │   ├── logger.py            # Logging configuration
+│       │   ├── markdown_cleaner.py  # LLM output cleaning utilities
+│       │   └── statistics.py        # Performance and conversion statistics
+│       └── validators/              # Content validation system
 │           ├── __init__.py
-│           ├── cache.py             # Cache management
-│           ├── file_handler.py      # File I/O utilities
-│           └── logger.py            # Logging configuration
+│           ├── base.py             # BaseValidator ABC
+│           ├── factory.py          # Validator factory
+│           ├── markdown_validator.py # PyMarkdown-based validation
+│           └── repetition_validator.py # Repetition detection and correction
 ├── tests/
 │   ├── __init__.py
 │   ├── test_library_api.py         # Library API tests
@@ -1158,14 +1166,181 @@ def setup_logging(
     )
 ```
 
+## Caching System Architecture
+
+### 12.1 Smart Caching Design
+
+The application implements a sophisticated deterministic caching system that dramatically improves performance for repeated processing:
+
+```python
+# utils/cache_manager.py
+
+class CacheManager:
+    """Central manager for document processing caches"""
+    
+    def __init__(self, base_cache_dir: Path):
+        self.base_cache_dir = base_cache_dir
+        
+    def get_image_cache(self, document_hash: str) -> ImageCache:
+        """Get image cache for a document"""
+        return ImageCache(self.get_document_cache_dir(document_hash))
+        
+    def get_markdown_cache(self, document_hash: str) -> MarkdownCache:
+        """Get markdown cache for a document"""
+        return MarkdownCache(self.get_document_cache_dir(document_hash))
+
+class DocumentHasher:
+    """Generates deterministic hashes for documents"""
+    
+    @staticmethod
+    def hash_document(document_path: Path, config_hash: str) -> str:
+        """Generate deterministic hash based on file and config"""
+        stat = document_path.stat()
+        hash_input = f"{document_path.absolute()}:{stat.st_size}:{stat.st_mtime}:{config_hash}"
+        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
+class ConfigHasher:
+    """Generates hashes for configuration parameters"""
+    
+    # Fields affecting image rendering
+    DOCUMENT_CONFIG_FIELDS = ["resolution", "max_dimension", "timeout"]
+    
+    # Fields affecting markdown generation  
+    PAGE_CONFIG_FIELDS = ["model", "temperature", "validation", "prompt_template"]
+```
+
+### 12.2 Cache Architecture
+
+```mermaid
+graph TB
+    subgraph Cache Structure
+        BaseDir[Base Cache Directory]
+        DocHash[Document Hash Directory]
+        ImageCache[Image Cache]
+        MarkdownCache[Markdown Cache]
+        
+        BaseDir --> DocHash
+        DocHash --> ImageCache
+        DocHash --> MarkdownCache
+        
+        ImageCache --> ImageFiles[page_0001.png, page_0002.png, ...]
+        ImageCache --> ImageConfig[.render_config.json]
+        
+        MarkdownCache --> MarkdownFiles[page_0001.md, page_0002.md, ...]
+        MarkdownCache --> MarkdownConfig[.llm_config.json]
+    end
+```
+
+### 12.3 Cache Invalidation Strategy
+
+- **Document-level hashing**: Combines file path, size, modification time, and relevant configuration
+- **Two-tier configuration hashing**: 
+  - Document config hash: affects image rendering (resolution, max_dimension)
+  - Page config hash: affects markdown generation (model, temperature, validation settings)
+- **Automatic invalidation**: Caches automatically invalidate when relevant configurations change
+- **Deterministic document IDs**: Documents get consistent cache IDs for reliable resume functionality
+
+### 12.4 Cache Benefits
+
+- **Resume functionality**: Interrupted processing resumes from cached progress
+- **Cost savings**: Avoid expensive LLM API calls for unchanged content
+- **Development efficiency**: Fast iteration during configuration changes
+- **Batch processing optimization**: Shared caches across multiple document processing
+
 ## Performance Considerations
 
-### 11.1 Memory Management
+## Validation System Architecture
 
-- **Image Caching**: Rendered page images are stored in a temporary cache directory with automatic cleanup after processing
-- **Streaming Processing**: Pages are processed as they become available rather than waiting for the entire document
-- **Batch Processing**: LLM API calls can be batched for better throughput
-- **Memory Limits**: Configure maximum page size and queue sizes to prevent memory overflow
+### 12.1 Extensible Validation Framework
+
+```python
+# validators/base.py
+
+class BaseValidator(ABC):
+    """Abstract base class for content validators"""
+    
+    @abstractmethod
+    async def validate(self, content: str, page: Page) -> ValidationResult:
+        """Validate content and return issues found"""
+        pass
+        
+    @abstractmethod
+    def create_correction_instructions(self, issues: List[ValidationIssue]) -> str:
+        """Create instructions for LLM to correct issues"""
+        pass
+
+class MarkdownValidator(BaseValidator):
+    """Validates markdown syntax using PyMarkdown"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.pymarkdown = PyMarkdownApi()
+        # Disable rules inappropriate for LLM-generated content
+        default_disabled = ["MD013", "MD041", "MD033", "MD026", "MD042"]
+        
+class RepetitionValidator(BaseValidator):
+    """Detects and corrects content repetition patterns"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.consecutive_threshold = config.get("consecutive_threshold", 5)
+        self.window_size = config.get("window_size", 15)
+        self.check_patterns = ["consecutive_lines", "paragraph_repetition", "character_repetition"]
+```
+
+### 12.2 Validation Pipeline
+
+```mermaid
+sequenceDiagram
+    participant LLM as LLM Provider
+    participant Parser as Page Parser
+    participant Validators as Validation Pipeline
+    participant Cache as Markdown Cache
+    
+    Parser->>LLM: Generate markdown
+    LLM-->>Parser: Raw markdown content
+    Parser->>Validators: Validate content
+    
+    loop For each validator
+        Validators->>Validators: Check rules
+        alt Issues found
+            Validators->>LLM: Request correction
+            LLM-->>Validators: Corrected content
+            Validators->>Validators: Re-validate
+        end
+    end
+    
+    Validators-->>Parser: Final validated content
+    Parser->>Cache: Cache validated markdown
+```
+
+### 12.3 Validation Configuration
+
+```yaml
+validation:
+  validators: ["markdown", "repetition"]
+  max_correction_attempts: 2
+  
+  markdown:
+    enabled: true
+    attempt_correction: true
+    strict_mode: false
+    disabled_rules: ["MD013", "MD041", "MD033"]
+    
+  repetition:
+    enabled: true
+    attempt_correction: true
+    consecutive_threshold: 5
+    window_size: 15
+    check_patterns: ["consecutive_lines", "paragraphs", "character_repetition"]
+```
+
+## Performance Considerations
+
+### 13.1 Memory Management
+
+- **Smart Image Caching**: Rendered page images cached with deterministic hashing and automatic cleanup
+- **Streaming Processing**: Pages processed as they become available rather than waiting for entire document
+- **LLM Output Caching**: Generated markdown cached to avoid redundant API calls
+- **Memory Limits**: Configurable maximum page size and queue sizes to prevent memory overflow
 
 ### 11.2 Optimization Strategies
 
