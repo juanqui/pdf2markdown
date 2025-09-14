@@ -14,6 +14,7 @@ from pdf2markdown.core import (
     ProcessingStatus,
 )
 from pdf2markdown.llm_providers import LLMProvider
+from pdf2markdown.utils.cache_manager import CacheManager, ConfigHasher
 from pdf2markdown.utils.markdown_cleaner import clean_llm_output
 from pdf2markdown.utils.statistics import get_statistics_tracker
 from pdf2markdown.validators import BaseValidator, create_validators
@@ -24,7 +25,12 @@ logger = logging.getLogger(__name__)
 class SimpleLLMPageParser(PageParser):
     """Simple page parser that uses LLM providers to convert images to markdown."""
 
-    def __init__(self, config: dict[str, Any], llm_provider: LLMProvider):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        llm_provider: LLMProvider,
+        full_config: dict[str, Any] | None = None,
+    ):
         """Initialize the parser with configuration.
 
         Args:
@@ -33,7 +39,9 @@ class SimpleLLMPageParser(PageParser):
                 - additional_instructions (str): Additional instructions for the LLM
                 - validate_markdown (bool): Whether to validate generated markdown (default: True)
                 - markdown_validator (dict): Configuration for markdown validator
+                - use_cache (bool): Whether to use caching (default: True)
             llm_provider: Pre-configured LLM provider instance (required)
+            full_config: Full application configuration for cache hashing
         """
         super().__init__(config)
 
@@ -41,6 +49,13 @@ class SimpleLLMPageParser(PageParser):
         if not llm_provider:
             raise ValueError("LLM provider is required for SimpleLLMPageParser")
         self.llm_provider = llm_provider
+
+        # Store full config for cache hashing
+        self.full_config = full_config or {"page_parser": config}
+        self.use_cache = config.get("use_cache", True)
+
+        # Initialize cache manager (will be set by coordinator)
+        self.cache_manager = None
 
         # Initialize validators from configuration
         self.validators = self._initialize_validators(config)
@@ -60,8 +75,16 @@ class SimpleLLMPageParser(PageParser):
 
         logger.info(
             f"Initialized SimpleLLMPageParser with provider={self.llm_provider.__class__.__name__}, "
-            f"validators={[v.name for v in self.validators]}"
+            f"validators={[v.name for v in self.validators]}, use_cache={self.use_cache}"
         )
+
+    def set_cache_manager(self, cache_manager: CacheManager) -> None:
+        """Set the cache manager for this parser.
+
+        Args:
+            cache_manager: CacheManager instance to use
+        """
+        self.cache_manager = cache_manager
 
     def _load_template(self, template_path: Path) -> Template:
         """Load Jinja2 template from file.
@@ -158,6 +181,41 @@ class SimpleLLMPageParser(PageParser):
             # Update page status
             page.status = ProcessingStatus.PROCESSING
 
+            # Check if we can use cached markdown
+            cached_content = None
+            if self.use_cache and self.cache_manager:
+                # Generate page config hash for cache validation
+                page_config_hash = ConfigHasher.hash_page_config(self.full_config)
+
+                # Get markdown cache for this document
+                markdown_cache = self.cache_manager.get_markdown_cache(page.document_id)
+
+                # Check if cache is valid and has this page
+                if markdown_cache.is_valid(page_config_hash):
+                    cached_content = markdown_cache.get_cached_markdown(page.page_number)
+
+                    if cached_content:
+                        logger.info(f"Using cached markdown for page {page.page_number}")
+
+                        # Update page with cached content
+                        page.markdown_content = cached_content
+                        page.status = ProcessingStatus.COMPLETED
+
+                        # Update metadata
+                        if page.metadata:
+                            page.metadata.extraction_timestamp = datetime.now()
+
+                        # Mark conversion complete
+                        stats.end_page_conversion(page.page_number)
+
+                        logger.info(
+                            f"Successfully loaded cached page {page.page_number}, content length: {len(cached_content)}"
+                        )
+                        return page
+
+            # No cached content available, generate new content
+            logger.info(f"Generating new markdown for page {page.page_number}")
+
             # Render prompt template
             prompt = self.prompt_template.render(
                 additional_instructions=self.config.get("additional_instructions"),
@@ -173,6 +231,23 @@ class SimpleLLMPageParser(PageParser):
             # Run validation pipeline if validators are configured
             if self.validators:
                 markdown_content = await self._run_validation_pipeline(markdown_content, page)
+
+            # Cache the generated content
+            if self.use_cache and self.cache_manager and markdown_content:
+                page_config_hash = ConfigHasher.hash_page_config(self.full_config)
+                markdown_cache = self.cache_manager.get_markdown_cache(page.document_id)
+
+                # Save configuration if this is the first page
+                if page.page_number == 1:
+                    # Get total pages from document metadata if available
+                    total_pages = getattr(page, "total_pages", 1)
+                    if hasattr(page, "metadata") and page.metadata:
+                        total_pages = page.metadata.total_pages
+                    markdown_cache.save_config(page_config_hash, total_pages)
+
+                # Save the markdown content
+                markdown_cache.save_markdown(page.page_number, markdown_content)
+                logger.debug(f"Cached markdown for page {page.page_number}")
 
             # Update page with markdown content
             page.markdown_content = markdown_content

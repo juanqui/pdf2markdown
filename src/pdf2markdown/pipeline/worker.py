@@ -168,6 +168,9 @@ class DocumentWorker(Worker):
         # Use the original document ID from the task
         document.id = task.id
 
+        # Preserve the output path from the original task
+        document.output_path = task.output_path
+
         # Update page document IDs to match
         for page in document.pages:
             page.document_id = task.id

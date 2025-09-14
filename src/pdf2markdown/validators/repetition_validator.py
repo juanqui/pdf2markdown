@@ -26,9 +26,12 @@ class RepetitionValidator(BaseValidator):
                 - check_normalized_lines: Check ignoring whitespace/punctuation (default: True)
                 - check_paragraphs: Check for duplicate paragraphs (default: True)
                 - check_patterns: Detect repetitive patterns (default: True)
+                - check_character_repetition: Check for excessive single-character repetition (default: True)
                 - min_pattern_length: Minimum chars for pattern detection (default: 20)
                 - pattern_similarity_threshold: Similarity threshold 0-1 (default: 0.9)
                 - min_line_length: Minimum line length to check (default: 5)
+                - max_character_repetition: Max consecutive repetitions of single char (default: 15)
+                - character_repetition_chars: Characters to check for repetition (default: "0123456789-=_.")
         """
         super().__init__(config)
 
@@ -42,11 +45,16 @@ class RepetitionValidator(BaseValidator):
         self.check_normalized_lines = config.get("check_normalized_lines", True)
         self.check_paragraphs = config.get("check_paragraphs", True)
         self.check_patterns = config.get("check_patterns", True)
+        self.check_character_repetition = config.get("check_character_repetition", True)
 
         # Pattern detection settings
         self.min_pattern_length = config.get("min_pattern_length", 20)
         self.pattern_similarity_threshold = config.get("pattern_similarity_threshold", 0.9)
         self.min_line_length = config.get("min_line_length", 5)
+
+        # Character repetition settings
+        self.max_character_repetition = config.get("max_character_repetition", 15)
+        self.character_repetition_chars = config.get("character_repetition_chars", "0123456789-=_.")
 
         logger.info(
             f"Initialized RepetitionValidator with consecutive_threshold={self.consecutive_threshold}, "
@@ -90,6 +98,9 @@ class RepetitionValidator(BaseValidator):
 
         if self.check_patterns:
             issues.extend(self._check_pattern_repetition(lines))
+
+        if self.check_character_repetition:
+            issues.extend(self._check_character_repetition(lines))
 
         # Remove duplicate issues (same line might be flagged by multiple checks)
         unique_issues = self._deduplicate_issues(issues)
@@ -388,6 +399,108 @@ class RepetitionValidator(BaseValidator):
 
         return issues
 
+    def _check_character_repetition(self, lines: list[str]) -> list[ValidationIssue]:
+        """Check for excessive repetition of single characters within lines.
+
+        Args:
+            lines: List of lines to check
+
+        Returns:
+            List of validation issues for character repetition
+        """
+        issues = []
+
+        for i, line in enumerate(lines):
+            if len(line.strip()) < self.min_line_length:
+                continue
+
+            # Check each character in our target set
+            for char in self.character_repetition_chars:
+                # Find all occurrences of consecutive repeated characters
+                consecutive_count = 0
+                start_pos = 0
+
+                for j, c in enumerate(line):
+                    if c == char:
+                        if consecutive_count == 0:
+                            start_pos = j
+                        consecutive_count += 1
+                    else:
+                        # Check if we hit the threshold before resetting
+                        if consecutive_count > self.max_character_repetition:
+                            # Avoid flagging legitimate markdown patterns
+                            if self._is_legitimate_pattern(
+                                char, consecutive_count, line, start_pos
+                            ):
+                                consecutive_count = 0
+                                continue
+
+                            issues.append(
+                                ValidationIssue(
+                                    line_number=i + 1,
+                                    column_number=start_pos + 1,
+                                    rule_id="REP007",
+                                    rule_name="character-repetition",
+                                    description=f"Character '{char}' repeated {consecutive_count} times consecutively",
+                                    extra_info=f"Position {start_pos}-{start_pos + consecutive_count - 1}",
+                                    severity="warning",
+                                )
+                            )
+                        consecutive_count = 0
+
+                # Check the final sequence if line ends with repeated character
+                if consecutive_count > self.max_character_repetition:
+                    if not self._is_legitimate_pattern(char, consecutive_count, line, start_pos):
+                        issues.append(
+                            ValidationIssue(
+                                line_number=i + 1,
+                                column_number=start_pos + 1,
+                                rule_id="REP007",
+                                rule_name="character-repetition",
+                                description=f"Character '{char}' repeated {consecutive_count} times consecutively",
+                                extra_info=f"Position {start_pos}-{start_pos + consecutive_count - 1}",
+                                severity="warning",
+                            )
+                        )
+
+        return issues
+
+    def _is_legitimate_pattern(self, char: str, count: int, line: str, start_pos: int) -> bool:
+        """Check if a character repetition is a legitimate markdown pattern.
+
+        Args:
+            char: The repeated character
+            count: Number of consecutive repetitions
+            line: The full line containing the pattern
+            start_pos: Starting position of the repetition
+
+        Returns:
+            True if this is likely a legitimate pattern, False if it's excessive repetition
+        """
+        # Allow reasonable markdown patterns
+        if char == "-" and count <= 20 and line.strip() == char * count:
+            return True  # Horizontal rule
+
+        if char == "=" and count <= 20 and line.strip() == char * count:
+            return True  # Another type of horizontal rule
+
+        if char == "_" and count <= 10:
+            return True  # Emphasis or short dividers
+
+        if char == "." and count <= 5:
+            return True  # Ellipsis or normal punctuation
+
+        # Check if it's part of a code block or fenced code
+        stripped_line = line.strip()
+        if stripped_line.startswith("```") or stripped_line.startswith("~~~"):
+            return True  # Code fence
+
+        # Check if it's part of a table or structured data where repetition might be normal
+        if "|" in line and char in "- ":
+            return True  # Table formatting
+
+        return False
+
     def _deduplicate_issues(self, issues: list[ValidationIssue]) -> list[ValidationIssue]:
         """Remove duplicate issues that refer to the same problem.
 
@@ -485,6 +598,18 @@ Your extraction contains unnecessary repetition that needs to be corrected:
                 for issue in rule_issues[:3]:
                     instructions += f"- Line {issue.line_number}: {issue.description}\n"
                 instructions += "**Fix**: Ensure varied content, not stuck on the same pattern.\n\n"
+
+            elif rule_name == "character-repetition":
+                instructions += "### Excessive Character Repetition\n"
+                instructions += "Single characters are repeated excessively:\n"
+                for issue in rule_issues[:3]:
+                    instructions += f"- Line {issue.line_number}: {issue.description}\n"
+                    if issue.extra_info:
+                        instructions += f"  {issue.extra_info}\n"
+                instructions += (
+                    "**Fix**: Remove excessive character repetition. Replace long sequences of repeated characters "
+                    "with meaningful content from the source document.\n\n"
+                )
 
         instructions += """
 ## Correction Instructions

@@ -109,7 +109,12 @@ document_parser:
   # Directory for caching rendered page images
   # Images are automatically cleaned up after processing
   # Use absolute paths or paths relative to working directory
+  # Note: This is used for legacy compatibility. New cache system uses cache.base_dir
   cache_dir: /tmp/pdf2markdown/cache
+  
+  # Enable caching of rendered images (recommended)
+  # Set to false to always re-render images (slower but uses less disk space)
+  use_cache: true
   
   # Maximum size for a single page image in bytes
   # Pages exceeding this will generate warnings
@@ -152,6 +157,10 @@ page_parser:
   
   # Enable/disable content validation entirely
   validate_content: true
+  
+  # Enable caching of LLM-generated markdown (recommended)
+  # Set to false to always regenerate content (more expensive but always fresh)
+  use_cache: true
   
   # Validation pipeline configuration
   validation:
@@ -266,6 +275,30 @@ pipeline:
   # INFO shows normal progress
   # WARNING and above only show problems
   log_level: INFO
+
+# ==============================================================================
+# CACHE CONFIGURATION
+# ==============================================================================
+# Controls caching of rendered images and LLM-generated markdown for performance
+# and cost optimization. Caches are automatically invalidated when configuration changes.
+
+cache:
+  # Enable or disable the caching system entirely
+  enabled: true
+  
+  # Base directory for all cache data
+  # Each document gets its own subdirectory based on content hash
+  base_dir: /tmp/pdf2markdown/cache
+  
+  # Maximum cache size in GB (automatic cleanup when exceeded)
+  max_size_gb: 10
+  
+  # Automatically clean up caches older than this many days
+  cleanup_after_days: 7
+  
+  # Resume processing by default (use cached data when available)
+  # Can be overridden with --resume or --clear-cache CLI flags
+  resume_by_default: false
 
 # ==============================================================================
 # OUTPUT CONFIGURATION

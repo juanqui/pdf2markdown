@@ -20,6 +20,8 @@ A Python application that leverages Large Language Models (LLMs) to accurately c
 - 📄 **Configurable Page Separators**: Customize how pages are separated in the output
 - 📁 **Batch Processing**: Process multiple files and directories with optional output organization
 - 🔄 **Flexible I/O**: Optional output paths with smart defaults (same name, .md extension)
+- 💾 **Smart Caching**: Automatic caching of rendered images and LLM outputs for fast re-processing
+- ⏯️ **Resume Support**: Resume interrupted processing using cached data to save time and costs
 
 ## Installation
 
@@ -418,7 +420,44 @@ pdf2markdown doc1.pdf /more/docs/ doc2.pdf
 
 # Concatenate multiple files into single output
 pdf2markdown file1.pdf file2.pdf -o combined.md
+
+# Resume interrupted processing
+pdf2markdown document.pdf --resume
+
+# Clear cache and force fresh processing
+pdf2markdown document.pdf --clear-cache
+
+# View cache statistics
+pdf2markdown --cache-stats
 ```
+
+### Caching and Resume
+
+The application includes a sophisticated caching system that dramatically improves performance for repeated processing:
+
+```bash
+# Automatic caching (enabled by default)
+pdf2markdown document.pdf                     # Caches images and markdown
+
+# Resume interrupted processing
+pdf2markdown document.pdf --resume            # Uses cached data where available
+
+# Force fresh processing
+pdf2markdown document.pdf --clear-cache       # Ignores all cached data
+
+# Monitor cache usage
+pdf2markdown --cache-stats                    # Shows cache size and contents
+
+# Process with specific cache settings
+pdf2markdown document.pdf --cache-dir /my/cache
+```
+
+**How caching works:**
+- **Image Cache**: PDF pages rendered to images are cached based on file content and rendering settings (resolution, max_dimension)
+- **Markdown Cache**: LLM-generated content is cached based on LLM configuration (model, temperature, prompts, validation settings)
+- **Smart Invalidation**: Caches are automatically invalidated when relevant configurations change
+- **Deterministic IDs**: Documents get consistent cache IDs based on file content and configuration
+- **Cost Savings**: Avoid re-processing expensive LLM calls for unchanged content
 
 ### Advanced Usage
 
@@ -469,6 +508,14 @@ The application uses a YAML configuration file to manage settings. To get starte
 Here's an overview of the configuration structure:
 
 ```yaml
+# Cache Configuration (optional, but recommended)
+cache:
+  enabled: true                          # Enable caching system
+  base_dir: /tmp/pdf2markdown/cache      # Cache directory
+  max_size_gb: 10                        # Maximum cache size
+  cleanup_after_days: 7                  # Auto-cleanup old caches
+  resume_by_default: false               # Resume by default
+
 # LLM Provider Configuration (required)
 llm_provider:
   provider_type: openai  # Provider type (currently supports "openai")
@@ -492,6 +539,7 @@ document_parser:
   cache_dir: /tmp/pdf2markdown/cache  # Cache directory for rendered images
   max_page_size: 50000000  # Maximum page size in bytes (50MB)
   timeout: 30  # Timeout for rendering operations
+  use_cache: true  # Enable caching of rendered images (recommended)
 
 # Page Parser Configuration
 page_parser:
@@ -504,6 +552,7 @@ page_parser:
   
   # Content validation pipeline configuration
   validate_content: true  # Enable content validation
+  use_cache: true  # Enable caching of LLM-generated markdown (recommended)
   
   validation:
     # List of validators to run (in order)
