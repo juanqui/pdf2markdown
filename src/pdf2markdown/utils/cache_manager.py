@@ -241,18 +241,36 @@ class MarkdownCache:
             True if cache is valid for this configuration
         """
         if not self.config_file.exists():
+            logger.debug(f"Markdown cache config file not found: {self.config_file}")
             return False
 
         try:
             with open(self.config_file) as f:
                 cached_config = json.load(f)
 
-            return (
-                cached_config.get("config_hash") == config_hash
-                and self.markdown_dir.exists()
-                and len(list(self.markdown_dir.glob("page_*.md"))) > 0
+            cached_hash = cached_config.get("config_hash")
+            has_files = (
+                self.markdown_dir.exists() and len(list(self.markdown_dir.glob("page_*.md"))) > 0
             )
-        except (json.JSONDecodeError, OSError):
+
+            is_valid = cached_hash == config_hash and has_files
+
+            if not is_valid:
+                if cached_hash != config_hash:
+                    logger.debug(
+                        f"Markdown cache invalid: config hash mismatch. Expected {config_hash}, got {cached_hash}"
+                    )
+                if not has_files:
+                    logger.debug(
+                        f"Markdown cache invalid: no cached files found in {self.markdown_dir}"
+                    )
+            else:
+                cached_pages = len(list(self.markdown_dir.glob("page_*.md")))
+                logger.debug(f"Markdown cache valid: {cached_pages} cached pages found")
+
+            return is_valid
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Error reading markdown cache config: {e}")
             return False
 
     def save_config(self, config_hash: str, page_count: int) -> None:

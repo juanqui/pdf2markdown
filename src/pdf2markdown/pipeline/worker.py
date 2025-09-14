@@ -165,18 +165,34 @@ class DocumentWorker(Worker):
         # Parse the document
         document = await self.parser.parse(task.source_path)
 
-        # Use the original document ID from the task
-        document.id = task.id
+        # IMPORTANT: Keep the document ID from the parser (deterministic hash)
+        # This is essential for cache consistency - do not overwrite with task.id
+        # The parser uses a deterministic hash based on file content and config,
+        # which is required for proper caching
+        parser_document_id = document.id
 
         # Preserve the output path from the original task
         document.output_path = task.output_path
 
-        # Update page document IDs to match
+        # Update the coordinator's tracking to use the parser's document ID
+        if hasattr(self, "coordinator") and self.coordinator:
+            # Move the document from the old UUID to the new deterministic hash
+            if task.id in self.coordinator.active_documents:
+                self.coordinator.active_documents[parser_document_id] = (
+                    self.coordinator.active_documents.pop(task.id)
+                )
+                self.logger.debug(
+                    f"Updated coordinator tracking: {task.id} -> {parser_document_id}"
+                )
+
+        # Pages already have the correct document_id from the parser
+        # Add pages to processing queue
         for page in document.pages:
-            page.document_id = task.id
             await self.queue_manager.add_page(page)
 
-        self.logger.info(f"Document {task.id} processed with {len(document.pages)} pages")
+        self.logger.info(
+            f"Document {parser_document_id} processed with {len(document.pages)} pages"
+        )
         return document
 
     async def _get_next_task(self) -> QueueItem | None:
