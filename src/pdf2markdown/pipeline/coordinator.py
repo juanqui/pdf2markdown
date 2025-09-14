@@ -80,6 +80,10 @@ class PipelineCoordinator(Pipeline):
         # Tracking
         self.active_documents: dict[str, Document] = {}
         self.completed_documents: dict[str, Document] = {}
+        self._completion_lock = asyncio.Lock()  # Lock for completion detection
+
+        logger.debug("Initialized PipelineCoordinator")
+        self._completion_lock = asyncio.Lock()
 
         logger.debug("Initialized PipelineCoordinator")
 
@@ -159,6 +163,29 @@ class PipelineCoordinator(Pipeline):
                 self.progress.update_document_progress()
                 logger.info(f"Document {doc_id} completed")
 
+    async def _handle_completion_check(self, document: Document) -> None:
+        """Check if document is complete and handle completion.
+
+        Args:
+            document: Document to check for completion
+        """
+        doc_id = document.id
+
+        # Use lock to prevent race conditions in completion detection
+        async with self._completion_lock:
+            # Only process if document is still active (not already completed)
+            if doc_id in self.active_documents:
+                # Check if all pages are complete
+                if document.pages and all(p.is_processed() for p in document.pages):
+                    logger.info(
+                        f"Document {doc_id} all pages completed: {len(document.pages)} pages"
+                    )
+                    document.mark_complete()
+                    self.completed_documents[doc_id] = document
+                    del self.active_documents[doc_id]
+                    self.progress.update_document_progress()
+                    logger.info(f"Document {doc_id} completed")
+
     async def process(self, document_path: Path) -> Document:
         """Process a complete document through the pipeline.
 
@@ -202,15 +229,50 @@ class PipelineCoordinator(Pipeline):
 
             # Wait for processing to complete
             while True:
-                # Check if document is complete
+                # Check if document is complete using either the original ID or any active document ID
+                result = None
                 if document.id in self.completed_documents:
                     result = self.completed_documents[document.id]
+                    logger.debug(f"Document {document.id} found in completed_documents")
+                    break
+
+                # Also check if any completed document matches the source path
+                # This handles the case where the document ID changed during processing
+                for completed_doc in self.completed_documents.values():
+                    if completed_doc.source_path == document_path:
+                        result = completed_doc
+                        logger.debug(f"Found completed document {completed_doc.id} by source path")
+                        break
+
+                if result:
                     break
 
                 # Check for errors
                 error = await self.queue_manager.get_next_error()
                 if error:
                     logger.error(f"Pipeline error: {error}")
+                    # Break on critical errors to prevent hanging
+                    if error.get("worker_type") == "document":
+                        raise PDFToMarkdownError(f"Document parsing failed: {error.get('error')}")
+
+                # Additional safety check: verify if document processing is actually progressing
+                # This helps detect hanging issues
+                if document.id in self.active_documents:
+                    active_doc = self.active_documents[document.id]
+                    if active_doc.pages:
+                        processed_pages = sum(1 for p in active_doc.pages if p.is_processed())
+                        total_pages = len(active_doc.pages)
+                        logger.debug(
+                            f"Progress check: {processed_pages}/{total_pages} pages processed"
+                        )
+
+                        # If all pages are processed but document not marked complete,
+                        # trigger completion manually (safety fallback)
+                        if processed_pages == total_pages and processed_pages > 0:
+                            logger.warning(
+                                "All pages processed but document not marked complete. Triggering completion manually."
+                            )
+                            await self._handle_completion_check(active_doc)
 
                 # Wait a bit
                 await asyncio.sleep(0.5)
@@ -221,6 +283,7 @@ class PipelineCoordinator(Pipeline):
                     for doc_id, doc in self.active_documents.items():
                         if doc.source_path == document_path:
                             document.id = doc_id
+                            logger.debug(f"Updated document ID to {doc_id}")
                             break
 
             # Stop workers

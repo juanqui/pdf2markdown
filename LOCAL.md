@@ -69,7 +69,7 @@ docker run --runtime nvidia --gpus all \
     -p 3001:3001 \
     --ipc=host \
     vllm/vllm-openai:latest \
-    --model allenai/olmOCR-7B-0825 \
+    --model allenai/olmOCR-7B-0825-FP8 \
     --trust-remote-code \
     --tensor-parallel-size 2 \
     --max-model-len 32768 \

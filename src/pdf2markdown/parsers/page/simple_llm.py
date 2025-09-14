@@ -186,9 +186,13 @@ class SimpleLLMPageParser(PageParser):
             if self.use_cache and self.cache_manager:
                 # Generate page config hash for cache validation
                 page_config_hash = ConfigHasher.hash_page_config(self.full_config)
+                logger.debug(f"Page config hash for page {page.page_number}: {page_config_hash}")
 
                 # Get markdown cache for this document
                 markdown_cache = self.cache_manager.get_markdown_cache(page.document_id)
+                logger.debug(
+                    f"Checking markdown cache for document {page.document_id}, page {page.page_number}"
+                )
 
                 # Check if cache is valid and has this page
                 if markdown_cache.is_valid(page_config_hash):
@@ -212,6 +216,10 @@ class SimpleLLMPageParser(PageParser):
                             f"Successfully loaded cached page {page.page_number}, content length: {len(cached_content)}"
                         )
                         return page
+                    else:
+                        logger.debug(f"No cached markdown found for page {page.page_number}")
+                else:
+                    logger.debug(f"Markdown cache invalid for page {page.page_number}")
 
             # No cached content available, generate new content
             logger.info(f"Generating new markdown for page {page.page_number}")
@@ -237,13 +245,16 @@ class SimpleLLMPageParser(PageParser):
                 page_config_hash = ConfigHasher.hash_page_config(self.full_config)
                 markdown_cache = self.cache_manager.get_markdown_cache(page.document_id)
 
-                # Save configuration if this is the first page
-                if page.page_number == 1:
+                # Always ensure configuration is saved (not just for first page)
+                # This fixes the issue where cache config might not be saved if processing
+                # is interrupted or pages are processed out of order
+                if not markdown_cache.config_file.exists():
                     # Get total pages from document metadata if available
                     total_pages = getattr(page, "total_pages", 1)
                     if hasattr(page, "metadata") and page.metadata:
                         total_pages = page.metadata.total_pages
                     markdown_cache.save_config(page_config_hash, total_pages)
+                    logger.debug(f"Saved markdown cache config for document {page.document_id}")
 
                 # Save the markdown content
                 markdown_cache.save_markdown(page.page_number, markdown_content)
